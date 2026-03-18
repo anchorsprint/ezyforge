@@ -1,14 +1,12 @@
 # EzyForge
 
-**AI-safe business software, created and operated by your AI agent. Even we can't read your data.**
+**AI-safe business software, created and operated by your AI agent.**
 
 ---
 
 ## The Problem
 
-AI agents that write to your database drift, invent field names, and ignore business rules. And every SaaS platform you use can read your data — their engineers, their support staff, anyone with a subpoena.
-
-EzyForge solves both: deterministic business rules enforced at the data layer, and zero-knowledge encryption so not even the platform can see your records.
+AI agents that write to your database drift, invent field names, and ignore business rules. EzyForge solves this: deterministic business rules enforced at the data layer, so your AI can operate your business software safely.
 
 ## How It Works
 
@@ -24,7 +22,6 @@ AI:  Setting up your expenses app...
 
      I can now: log expenses, update notes and categories, query spending.
      I cannot: delete expenses, change amounts, or log future dates.
-     Your data is encrypted — even EzyForge engineers can't read it.
 ```
 
 No browser. No signup form. No copy-paste. Your AI handles everything.
@@ -88,24 +85,18 @@ AI:  ✅ Schema updated! I can now log tips on expenses.
 
 Schema evolves through conversation, not dashboard editing.
 
-## Zero-Knowledge Privacy
+## Privacy & Security
 
-Your data is encrypted with a key only you hold. EzyForge uses envelope encryption (AES-256) where:
+Your data is protected with standard cloud security:
 
-- Your master key is derived from your password and never leaves your device
-- Each app has its own encryption key, encrypted with your master key
-- Business data (amounts, merchants, notes) is encrypted before storage
-- EzyForge engineers cannot decrypt your data — even if they wanted to
+- **Encrypted at rest** — provider-managed database encryption
+- **Encrypted in transit** — HTTPS/TLS everywhere
+- **Isolated per app** — each app's data is scoped and inaccessible to other apps
+- **Scoped API tokens** — per-app, per-agent, revocable with configurable expiry
+- **Full audit trail** — every AI operation logged
+- **Data export & deletion** — download or delete your data anytime
 
-| Who | Can read your data? |
-|-----|-------------------|
-| You | Yes |
-| Your approved AI agent | Yes (scoped token, runtime only) |
-| EzyForge engineers | **No** |
-| Database administrators | **No** |
-| Anyone with a subpoena to EzyForge | **No** |
-
-This isn't a privacy policy. It's a cryptographic guarantee.
+We take privacy seriously — your data is isolated, encrypted, and under your control.
 
 ## Core Concepts
 
@@ -113,7 +104,6 @@ This isn't a privacy policy. It's a cryptographic guarantee.
 - **AI is Operator** — AI agents get auto-generated tools scoped to exactly what they're allowed to do.
 - **Owner is Governor** — Schema changes require explicit approval. AI proposes, owner approves.
 - **Agent is Primary** — The AI creates your app, operates your data, and proposes improvements. The dashboard is for exceptions.
-- **Zero Knowledge** — Your data is encrypted with your key. Not even the platform can read it.
 
 ## The Interaction Model
 
@@ -147,7 +137,6 @@ forge connect claude                 # Configure AI
 | Agentic schema proposals (AI proposes, human approves) | 📋 Planned |
 | MCP endpoint hosting (always-on, per-app) | 📋 Planned |
 | YAML schema definition (entities, fields, rules) | 📋 Planned |
-| Zero-knowledge encryption | 📋 Planned |
 | FEEL-inspired rule engine | 📋 Planned |
 | AI field-level permissions | 📋 Planned |
 | MCP tool generation | 📋 Planned |
@@ -159,9 +148,10 @@ forge connect claude                 # Configure AI
 
 ## Roadmap
 
-1. **P1 — Agentic Core:** Agent creates apps via API, MCP endpoints, zero-knowledge encryption, rule engine, AI permissions, CLI, expenses + CRM templates.
+1. **P1 — Agentic Core:** Agent creates apps via API, MCP endpoints, rule engine, AI permissions, standard cloud security, CLI, expenses + CRM templates.
 2. **P2 — Growth:** Web dashboard (admin), approval workflow UI, entity relationships, billing, team sharing, OpenAI function support.
-3. **P3 — Ecosystem:** Template marketplace, state machines, searchable encryption, import tools, mobile dashboard.
+3. **P3 — Ecosystem:** Template marketplace, state machines, import tools, mobile dashboard.
+4. **Enterprise:** Zero-knowledge encryption (user-held keys, client-side decryption) as a paid add-on.
 
 ## License
 

@@ -4,7 +4,7 @@
 
 EzyForge is an agentic-first cloud platform. The primary interface is an AI agent (Claude, GPT, OpenClaw, Gemini) connecting via MCP. The agent creates apps, operates data, and proposes schema changes. The web dashboard exists for admin tasks — token management, audit review, billing — not for daily operations.
 
-The core engine (schema → rules → permissions → tools → database) runs server-side. User data is encrypted with user-held keys — the platform cannot read it.
+The core engine (schema → rules → permissions → tools → database) runs server-side. User data is isolated per app, encrypted at rest, and protected by scoped API tokens.
 
 ```
                          ┌──────────────────────────────────────────────────────┐
@@ -45,17 +45,9 @@ The core engine (schema → rules → permissions → tools → database) runs s
                          │                         │                            │
                          │                         ▼                            │
                          │  ┌──────────────────────────────────────────────┐    │
-                         │  │        Zero-Knowledge Data Layer              │    │
-                         │  │                                               │    │
-                         │  │  Encrypt/Decrypt ←→ User-Held Keys           │    │
-                         │  │  (app-level envelope encryption)              │    │
-                         │  └──────────────────────┬───────────────────────┘    │
-                         │                         │                            │
-                         │                         ▼                            │
-                         │  ┌──────────────────────────────────────────────┐    │
-                         │  │           Encrypted Postgres                  │    │
-                         │  │   (per-app encrypted columns,                │    │
-                         │  │    platform cannot decrypt)                   │    │
+                         │  │           Postgres (Encrypted at Rest)        │    │
+                         │  │   (per-app data isolation via app_id,        │    │
+                         │  │    provider-managed encryption)              │    │
                          │  └──────────────────────────────────────────────┘    │
                          └──────────────────────────────────────────────────────┘
 
@@ -140,7 +132,7 @@ All CRUD happens via MCP tools. The human never opens a form, table, or dashboar
 ```
 Human: "Log lunch at McDonald's, RM 15"
 Agent → MCP: create_expense({ amount: 15, merchant: "McDonald's", category: "food", date: "2026-03-18" })
-EzyForge: permission check ✓ → validation ✓ → rules ✓ → encrypt → write → audit log
+EzyForge: permission check ✓ → validation ✓ → rules ✓ → write → audit log
 Agent → Human: "Logged! Expense #47 — RM 15 at McDonald's."
 ```
 
@@ -187,7 +179,7 @@ The dashboard is not the product — the AI integration is. The dashboard exists
 - **Approve/reject schema proposals** — diff view of proposed changes
 - **Billing and subscription** — plan management, usage, invoices
 - **Emergency schema unlock** — manual override when needed
-- **Export data** — download decrypted data (client-side decryption in browser)
+- **Export data** — download data as CSV/JSON
 
 The dashboard is explicitly NOT for:
 - Data entry (use the AI agent)
@@ -200,10 +192,9 @@ The dashboard is explicitly NOT for:
 
 ### 1. Auth & Identity
 
-Handles user registration, session management, and the cryptographic identity that underpins zero-knowledge.
+Handles user registration, session management, and API token issuance.
 
 - **User registration** via email + OAuth (Google, GitHub) through Clerk or Auth.js
-- **Master encryption key** derived on signup from user's password (PBKDF2 or Argon2). The key never leaves the client. The server never sees it in plaintext.
 - **API tokens** scoped per-app and per-AI-agent. Each token is revocable with configurable expiry. Tokens are the only way AI agents authenticate.
 - **Agent authentication** — agents authenticate via API keys to create apps, get MCP tokens, and call the REST API. The agent is a first-class citizen, not an afterthought bolted onto a human auth flow.
 
@@ -211,7 +202,7 @@ Handles user registration, session management, and the cryptographic identity th
 
 Every request is routed and isolated by `app_id`.
 
-- **Logical isolation** — each app has its own schema, encrypted data partition, and token set. All database queries are scoped by `app_id`. No cross-app data access is possible.
+- **Logical isolation** — each app has its own schema, data partition, and token set. All database queries are scoped by `app_id`. No cross-app data access is possible.
 - **Rate limiting** per app and per token. A single misbehaving agent cannot affect other apps or other users.
 - **Routing** — incoming requests (MCP, REST, dashboard) are resolved to the correct app context before reaching the engine kernel.
 
@@ -219,7 +210,7 @@ Every request is routed and isolated by `app_id`.
 
 Pre-built YAML schema templates that encode best-practice business schemas with rules and permissions already configured.
 
-- Templates are selected by the **agent**, not by a human browsing a gallery. The agent calls the REST API with a template name, and the platform provisions everything — schema, encryption keys, MCP endpoint, tokens, tools.
+- Templates are selected by the **agent**, not by a human browsing a gallery. The agent calls the REST API with a template name, and the platform provisions everything — schema, MCP endpoint, tokens, tools.
 - Templates include: entity definitions, field types and constraints, business rules, AI permission scopes, and example data shapes.
 - Built-in templates: expenses (dogfood), CRM. More added over time.
 - Templates are starting points. The agent or user can propose modifications after deployment.
@@ -281,16 +272,13 @@ Field Validation ── invalid? → { error: "validation_error", fields: [...] 
 Rule Engine (before hooks) ── rejected? → { error: "rule_violation", rule: "no_future_dates" }
     │
     ▼
-Encrypt (Zero-Knowledge Layer)
-    │
-    ▼
 Database Write (scoped by app_id)
     │
     ▼
 Rule Engine (after hooks)
     │
     ▼
-Audit Log (encrypted)
+Audit Log
     │
     ▼
 Response Out
@@ -300,56 +288,16 @@ Response Out
 - **Structured errors.** Every failure returns a machine-readable error: `permission_denied`, `rule_violation`, `validation_error`. AI agents can parse these and explain them to the human.
 - **Atomic transactions.** Each tool execution is a single database transaction. If any step fails, nothing is written.
 
-### 5. Zero-Knowledge Data Layer
+### 5. Data Layer
 
-The privacy architecture that ensures EzyForge cannot read user business data.
+Standard cloud database with per-app isolation and provider-managed encryption at rest.
 
-#### Envelope Encryption Architecture
-
-```
-User Password
-    │
-    ▼ (PBKDF2 / Argon2, client-side)
-Master Key (MK)
-    │
-    ▼ (encrypts)
-App Data Key (ADK) ── one per app, generated on app creation
-    │
-    ▼ (encrypts)
-Field Values ── each business data field encrypted individually
-```
-
-#### How It Works
-
-1. **Signup:** User's password derives a Master Key (MK) via PBKDF2 or Argon2. This happens client-side. The MK never reaches the server.
-2. **App creation:** Platform generates a random App Data Key (ADK). The ADK is encrypted with the user's MK and stored. The platform stores only the encrypted ADK — it cannot decrypt it.
-3. **AI writes data:** The tool execution runtime encrypts each business data field with the ADK before writing to Postgres. Platform metadata (app_id, timestamps, token hashes) is stored in plaintext — only user business content is encrypted.
-4. **Dashboard reads data:** The browser decrypts the ADK using the user's MK (derived from their password), then decrypts field values client-side. The server serves ciphertext; the browser renders plaintext.
-
-#### AI Agent Access Model
-
-AI agents need to read and write data, which means they need decryption capability — but only during execution.
-
-- **Session-scoped decryption.** The ADK is loaded into memory only for the duration of a tool execution. It is not persisted, cached, or logged.
-- **In-memory only.** The decrypted ADK exists in the engine process memory during request handling. After the response is sent, it is discarded.
-- **No plaintext in logs.** Business data never appears in application logs, error messages, monitoring, or analytics. Only ciphertext and metadata.
-
-#### Who Can Access User Data
-
-| Actor | Can read business data? | Why |
-|-------|------------------------|-----|
-| App owner | Yes | Holds the Master Key, decrypts client-side |
-| AI agent (authorized) | Yes (scoped) | Session-scoped ADK, field-level permissions |
-| AI agent (unauthorized) | No | Token rejected, no ADK access |
-| EzyForge engineers | No | No access to MK or plaintext ADK |
-| Database administrators | No | All business columns contain ciphertext |
-| Law enforcement (subpoena) | No | Platform cannot decrypt — can only hand over ciphertext |
-
-#### Tradeoffs
-
-- **Search and filter:** AES-SIV is used for fields marked `filterable` — it produces deterministic ciphertext, enabling equality lookups. AES-GCM is used for sensitive fields — fully random ciphertext, no search capability.
-- **Aggregation:** Sum, average, and other aggregations cannot run on encrypted data in the database. Aggregation must happen in-memory after decryption, which limits scale for large datasets.
-- **Key loss:** If the user loses their password and has no recovery phrase, their data is unrecoverable. This is by design — it is the cost of zero-knowledge. Optional recovery phrases mitigate this risk.
+- **Postgres** (Neon or Supabase managed) with encryption at rest enabled by default.
+- **Per-app isolation** — all queries scoped by `app_id`. RLS or application-level scoping ensures no cross-app data access.
+- **HTTPS everywhere** — all data in transit is encrypted via TLS.
+- **No plaintext business data in logs** — application logs, error messages, and monitoring never contain user business data.
+- **Data export** — users can download their data anytime as CSV/JSON.
+- **Data deletion** — users can delete their app and all associated data at any time.
 
 ### 6. MCP Hosting
 
@@ -365,13 +313,13 @@ The primary interface to EzyForge. AI agents connect here for all data operation
 
 The dashboard exists for admin tasks that require human judgment. It is not the primary interface.
 
-- **Built with Next.js + Tailwind CSS.** Client-side decryption — the server never sees plaintext business data.
+- **Built with Next.js + Tailwind CSS.**
 - **Approve/reject schema proposals** — diff view showing exactly what the AI proposes to change, with approve/reject buttons.
 - **Manage API tokens** — create new tokens for AI agents, set expiry, revoke compromised tokens.
-- **Audit trail** — timeline of every AI operation, filterable by tool, result, and time range. Encrypted with the App Data Key, decrypted client-side.
+- **Audit trail** — timeline of every AI operation, filterable by tool, result, and time range.
 - **Billing and subscription** — plan management, usage metrics, invoices.
 - **Emergency schema unlock** — manual override to unlock a locked schema when needed.
-- **Data export** — download decrypted data as CSV/JSON (decryption happens in browser).
+- **Data export** — download data as CSV/JSON.
 
 The dashboard is **NOT** for:
 - Data entry — use the AI agent
@@ -414,9 +362,8 @@ The CLI is a convenience layer over the REST API. Everything it does can also be
 
 Every AI operation is logged. No exceptions.
 
-- **What is logged:** token ID, tool name, input parameters (encrypted), result (success/error), timestamp, schema version.
-- **Encrypted with App Data Key.** Audit trail entries are encrypted the same way as business data. Only the app owner can read them.
-- **Visible to app owner** via the dashboard (client-side decryption) or CLI (`forge logs`).
+- **What is logged:** token ID, tool name, input parameters, result (success/error), timestamp, schema version.
+- **Visible to app owner** via the dashboard or CLI (`forge logs`).
 - **Immutable.** Audit entries cannot be modified or deleted by any party — not the AI agent, not the user, not EzyForge engineers.
 - **Filterable.** By tool name, result status, time range, and token ID. Useful for debugging AI behavior and compliance reporting.
 
@@ -433,7 +380,7 @@ Every AI operation is logged. No exceptions.
    Params: { amount: 15.00, merchant: "McDonald's", category: "food", date: "2026-03-18" }
 
 2. Multi-Tenant App Router
-   → Validates token → resolves app_id → loads app context (schema, permissions, ADK)
+   → Validates token → resolves app_id → loads app context (schema, permissions)
 
 3. Permission Layer
    → Role: ai
@@ -451,20 +398,14 @@ Every AI operation is logged. No exceptions.
    → Rule "no_future_dates": date <= today() → 2026-03-18 <= 2026-03-18 ✓ PASS
    → Rule "auto_tag_weekend": day_of_week(date) IN ["Saturday", "Sunday"] → Wednesday → SKIP
 
-6. Zero-Knowledge Layer
-   → Encrypt merchant, category, notes with ADK (AES-256-GCM)
-   → Encrypt amount with ADK (AES-SIV — filterable)
-   → date stored as-is (platform metadata, not business content — configurable)
-
-7. Database Write
-   → INSERT INTO expenses (app_id, id, amount_enc, merchant_enc, ...) VALUES (...)
+6. Database Write
+   → INSERT INTO expenses (app_id, id, amount, merchant, ...) VALUES (...)
    → Transaction committed
 
-8. Audit Log
+7. Audit Log
    → { token: "eyJ...", tool: "create_expense", result: "success", timestamp: "..." }
-   → Encrypted with ADK, written to audit table
 
-9. Response → AI Agent
+8. Response → AI Agent
    → { success: true, id: "exp-047", created_at: "2026-03-18T12:34:56Z" }
 ```
 
@@ -478,7 +419,7 @@ Every AI operation is logged. No exceptions.
    → Token validation fails
 
 3. Response: { error: "unauthorized", status: 401 }
-   → No app context loaded, no ADK touched, no audit entry (nothing to audit)
+   → No app context loaded, no audit entry (nothing to audit)
 ```
 
 ### AI Tries to Delete (Tool Does Not Exist)
@@ -521,21 +462,34 @@ Every AI operation is logged. No exceptions.
 |-----------|-----------|-----|
 | Dashboard + Marketing | Vercel (Next.js) | Fast deploys, edge CDN, zero-config |
 | Engine + MCP Endpoints | Railway or Fly.io | Always-on containers, low-latency, scalable |
-| Database | Postgres (Neon or Supabase managed) | Managed, connection pooling, reliable |
+| Database | Postgres (Neon or Supabase managed) | Managed, encryption at rest, connection pooling |
 | Auth | Clerk or Auth.js | Proven auth with OAuth, JWT sessions |
-| Encryption | AES-256-GCM + AES-SIV | GCM for sensitive (random), SIV for filterable (deterministic) |
-| Key Derivation | Argon2 or PBKDF2 | Industry-standard password-to-key derivation |
+| Encryption | Provider-managed at rest + HTTPS in transit | Standard, reliable, zero maintenance |
 | MCP Transport | HTTP (streamable) | Standard MCP transport, works with all major AI platforms |
 | Monorepo | Turborepo + pnpm | Fast builds, shared packages, single repo |
-| Monitoring | Platform-level metrics only | Request counts, latency, error rates — no user data access |
+| Monitoring | Platform-level metrics only | Request counts, latency, error rates — no user data in logs |
 
 ### Multi-Tenant Isolation
 
-- **Database level:** All queries include `WHERE app_id = ?`. No query can omit the app_id scope.
-- **Encryption level:** Each app has its own App Data Key. Even if database isolation fails, data from app A is encrypted with a different key than app B. Cross-app reads yield ciphertext that cannot be decrypted.
+- **Database level:** All queries include `WHERE app_id = ?`. No query can omit the app_id scope. RLS or application-level enforcement.
 - **Token level:** Tokens are scoped to a single app. A token for app A cannot authenticate against app B.
 - **Rate limiting:** Per-app and per-token rate limits prevent one app from affecting platform performance for others.
 - **Schema isolation:** Each app has its own schema, tool set, and rule configuration. No sharing between apps.
+
+### Privacy & Security Model
+
+EzyForge takes a standard, proven approach to data security:
+
+- **Encryption at rest** — provider-managed (Neon/Supabase handle this automatically)
+- **Encryption in transit** — HTTPS/TLS everywhere
+- **Per-app isolation** — data scoped by `app_id`, no cross-app access possible
+- **Scoped API tokens** — per-app, per-agent, revocable, with configurable expiry
+- **Audit trail** — every AI operation logged with full context
+- **Data export** — users can download their data anytime
+- **Data deletion** — users can delete their app and all associated data
+- **No business data in logs** — application logging never includes user content
+
+If enterprise customers require zero-knowledge encryption (user-held keys, client-side decryption), this becomes a paid add-on in a future release.
 
 ---
 
@@ -545,5 +499,4 @@ Every AI operation is logged. No exceptions.
 2. **Not a general-purpose database.** We enforce rules on writes and generate tools. Storage is pluggable. We are not competing with Supabase or PlanetScale.
 3. **Not a prompt engineering tool.** We do not validate AI output or filter AI responses. Rules live in the data layer, enforced deterministically, not in prompts.
 4. **Not self-hosted.** The cloud platform is the product. We will not maintain two deployment models. The CLI is a helper, not an alternative.
-5. **Not a platform that can read your data.** Zero-knowledge is architectural, not contractual. No backdoors, no admin panels, no support tools that access plaintext.
-6. **Not a dashboard-first product.** The AI agent is the primary interface. The dashboard is secondary — for admin, config, and governance. If you are using the dashboard for daily operations, you are using EzyForge wrong.
+5. **Not a dashboard-first product.** The AI agent is the primary interface. The dashboard is secondary — for admin, config, and governance. If you are using the dashboard for daily operations, you are using EzyForge wrong.

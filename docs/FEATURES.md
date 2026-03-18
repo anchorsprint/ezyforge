@@ -1,12 +1,12 @@
 # EzyForge — Feature List
 
-> **Guiding principle:** Schema is Law. AI is Operator. Owner is Governor. Your data is yours — not even we can read it. Agents are the primary interface. Dashboards are for exceptions.
+> **Guiding principle:** Schema is Law. AI is Operator. Owner is Governor. Your data is isolated, encrypted at rest, and exportable anytime. Agents are the primary interface. Dashboards are for exceptions.
 
 ---
 
 ## P1 — Agentic Core (prove the agent-first model works)
 
-The minimum needed for an AI agent to create an app, operate data, and propose schema changes — with zero-knowledge privacy from day one.
+The minimum needed for an AI agent to create an app, operate data, and propose schema changes — with standard cloud security from day one.
 
 ### Agentic App Lifecycle
 
@@ -19,7 +19,7 @@ This is the key differentiator. The AI agent is the primary interface — not a 
 | **Agentic Schema Proposals** | Agent proposes schema changes (add field, add rule), human approves via notification. | Schema evolves through usage, not dashboard editing | POST /api/apps/{id}/proposals with change spec. Human notified via email/push/in-chat. Approve/reject without opening dashboard. Schema versioned on approval. |
 | **MCP Endpoint Hosting** | Always-on MCP endpoint per deployed app. | AI agents need a persistent connection point | mcp.ezyforge.io/app/{app_id}, token-authenticated, MCP over HTTP (streamable), tools discoverable. |
 | **AI Token Management** | Create, revoke, and scope tokens for AI agents. | Control which AIs can access which apps | Per-app tokens with expiry, one-click revoke, token activity visible in audit log. |
-| **Activity Log** | Log every AI tool call with parameters and result. | Transparency — user sees what the AI did | Filterable by tool, result, and time. Encrypted with app's data key. |
+| **Activity Log** | Log every AI tool call with parameters and result. | Transparency — user sees what the AI did | Filterable by tool, result, and time. |
 
 ### Engine (runs server-side)
 
@@ -38,18 +38,19 @@ This is the key differentiator. The AI agent is the primary interface — not a 
 
 | Feature | Description | Why | Acceptance Criteria |
 |---------|------------|-----|-------------------|
-| **User Auth** | Sign up / login via email + OAuth (Google, GitHub). | Can't have a platform without accounts | Clerk or Auth.js integration. JWT session tokens. Password-derived master encryption key generated on signup. |
+| **User Auth** | Sign up / login via email + OAuth (Google, GitHub). | Can't have a platform without accounts | Clerk or Auth.js integration. JWT session tokens. |
 | **Agent Authentication** | API key auth for agents to create and manage apps. | Agents need programmatic access | API keys with scopes. Agents create apps via REST API. No browser required. |
 | **App Deployment** | Deploy schema → spin up MCP endpoint + REST API. | The product's core value | Endpoint live within 30 seconds. Tools generated and discoverable. |
-| **Multi-Tenant Isolation** | Each app is logically isolated — schema, data, tokens. | Security foundation | All queries scoped by `app_id`. No cross-app data access. Per-app encryption keys. |
+| **Multi-Tenant Isolation** | Each app is logically isolated — schema, data, tokens. | Security foundation | All queries scoped by `app_id`. No cross-app data access. Per-app rate limiting. |
 
 ### Privacy & Security
 
 | Feature | Description | Why | Acceptance Criteria |
 |---------|------------|-----|-------------------|
-| **Envelope Encryption** | Per-app encryption keys, encrypted with user's master key. | Zero-knowledge foundation | AES-256-GCM for sensitive fields. AES-SIV for filterable fields. App Data Key never stored in plaintext. |
-| **Zero-Knowledge Architecture** | Platform cannot decrypt user business data. | The core privacy promise | Engineers cannot read user data. DB contains only ciphertext for business fields. No admin panel for viewing user data. |
-| **Master Key Derivation** | User's master key derived from password, stays client-side. | User holds the only key | PBKDF2 or Argon2 derivation. Key never sent to server in plaintext. Optional recovery phrase. |
+| **Encryption at Rest** | Provider-managed database encryption (Neon/Supabase). | Standard cloud security | All data encrypted at rest by database provider. HTTPS for all data in transit. |
+| **Per-App Data Isolation** | Each app's data is scoped and inaccessible to other apps. | Prevent cross-app data leaks | All queries enforce `app_id` scoping. RLS or application-level enforcement. |
+| **Scoped API Tokens** | Per-app, per-agent tokens with configurable permissions and expiry. | Control AI access granularly | Tokens revocable, auditable, with expiry dates. |
+| **Data Export & Deletion** | Users can download or delete their data at any time. | User data ownership | CSV/JSON export. Full app deletion removes all associated data. |
 
 ### Schema Management
 
@@ -85,7 +86,7 @@ Needed for early adopters building real apps and for business viability. Dashboa
 | Feature | Description | Why |
 |---------|------------|-----|
 | **Web Dashboard** | Admin interface for token management, audit trail, schema review, billing. | Some tasks need visual UI. NOT for daily operations — admin/config only. |
-| **Dashboard Data Viewer** | Browse app data (decrypted client-side). | Users occasionally need to see raw data. Table view, pagination, filter/sort, client-side decrypt. |
+| **Dashboard Data Viewer** | Browse app data in a table view. | Users occasionally need to see raw data. Table view, pagination, filter/sort. |
 | **Schema Editor** | Web-based YAML editor with validation and preview. | Not everyone edits YAML locally. Syntax highlighting, validation, preview of generated tools. |
 | **Approval Workflow UI** | Review and approve schema proposals in dashboard. | Visual diff for complex changes. Diff view, approve/reject, notification settings. |
 | **Entity Relationships** | `belongs_to`, `has_many` with foreign keys and cascade config. | Real apps have related entities. |
@@ -94,9 +95,8 @@ Needed for early adopters building real apps and for business viability. Dashboa
 | **Custom Roles** | Define roles beyond `owner` and `ai`. | Team-based apps. |
 | **Billing & Subscriptions** | Free tier, paid plans, usage-based pricing. | Revenue. |
 | **OpenAI Function Generation** | Generate tools in OpenAI function calling format. | Support GPT-based agents. |
-| **Key Recovery** | Recovery phrase to restore access if password is lost. | Users will lose passwords. |
 | **Webhook Notifications** | Notify external systems on events (rule violations, approvals). | Integration with existing workflows. |
-| **Team Sharing** | Share an app with team members (each with their own key). | Collaborative use. |
+| **Team Sharing** | Share an app with team members. | Collaborative use. |
 | **REST API Docs** | Auto-generated OpenAPI spec per app. | Developer convenience. |
 
 ---
@@ -111,12 +111,21 @@ Needed for broader adoption and market expansion.
 | **Workflow / State Machines** | Entity lifecycle states with valid transitions. | Draft → Submitted → Approved patterns. |
 | **Additional Templates** | Booking, inventory, invoicing, project tracking. | Cover more business types. |
 | **Row-Level Permissions** | Filter data access by ownership or tenant. | Multi-user apps with data isolation. |
-| **Searchable Encryption** | Enable richer queries on encrypted data. | Overcome zero-knowledge search limitations. |
 | **Prisma / Supabase Import** | Convert existing schemas to EzyForge format. | Onboarding from existing projects. |
 | **GoRules JDM Integration** | Complex decision tables for advanced business rules. | Insurance, pricing, scoring use cases. |
 | **Mobile Dashboard** | Responsive dashboard or native app. | Business owners check data on phones. |
 | **Audit Trail Export** | Export audit logs for compliance reporting. | Regulated industries need this. |
 | **Usage Analytics** | Platform-level analytics (no user data access). | Product improvement, not surveillance. |
+
+---
+
+## Future / Enterprise Add-ons
+
+| Feature | Description | Why |
+|---------|------------|-----|
+| **Zero-Knowledge Encryption** | User-held master keys, envelope encryption, client-side decryption. | Enterprise/regulated customers who need "platform cannot read data" guarantee. |
+| **Searchable Encryption** | AES-SIV for deterministic ciphertext enabling equality lookups on encrypted fields. | Enable queries on encrypted data without decrypting. |
+| **Key Recovery** | Recovery phrase to restore access if encryption key is lost. | Required companion to zero-knowledge. |
 
 ---
 
@@ -127,8 +136,6 @@ Needed for broader adoption and market expansion.
 | Self-hosted deployment | Cloud is the product. Maintaining two deployment models splits focus. |
 | AI model or AI wrapper | We're the boundary between AI and data, not the AI itself. |
 | Prompt-based guardrails | Rules live in the data layer, never in prompts. |
-| Admin panel to view user data | Zero-knowledge means zero-knowledge. No backdoors, ever. |
 | Real-time / WebSocket subscriptions | Batch CRUD is sufficient for MVP use cases. |
 | Non-JS/TS runtimes | TypeScript first. Other SDKs after adoption is proven. |
-| Platform-side analytics on user data | We can't read it. We won't build the ability to. |
 | Dashboard-first design | Agents are the primary interface; dashboard is for exceptions. |
