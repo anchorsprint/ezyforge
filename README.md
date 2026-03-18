@@ -1,115 +1,167 @@
 # EzyForge
 
-**Define your business schema once. AI operates within it — never outside it.**
+**AI-safe business software, created and operated by your AI agent. Even we can't read your data.**
 
 ---
 
 ## The Problem
 
-AI agents that write to databases drift, invent field names, ignore business rules, and can't be constrained to specific fields. Every team building agentic apps ends up writing custom guardrails from scratch. No product combines schema enforcement, AI field-level permissions, and deterministic business rules in one package.
+AI agents that write to your database drift, invent field names, and ignore business rules. And every SaaS platform you use can read your data — their engineers, their support staff, anyone with a subpoena.
 
-## The Solution
-
-EzyForge is a schema-first runtime for AI agents. You define your entities, rules, and AI permissions in a YAML file. EzyForge generates MCP-compatible tools that AI agents can call, enforces every rule deterministically at the data layer, and ensures AI can never touch fields or operations you haven't explicitly allowed.
+EzyForge solves both: deterministic business rules enforced at the data layer, and zero-knowledge encryption so not even the platform can see your records.
 
 ## How It Works
 
-**1. Define your schema:**
+**1. Tell your AI to create an app:**
+
+```
+You: "Create me a personal expenses tracker on EzyForge"
+
+AI:  Setting up your expenses app...
+     ✅ App created from expenses template
+     ✅ MCP endpoint live at mcp.ezyforge.io/app/abc-123
+     ✅ Connected and ready
+
+     I can now: log expenses, update notes and categories, query spending.
+     I cannot: delete expenses, change amounts, or log future dates.
+     Your data is encrypted — even EzyForge engineers can't read it.
+```
+
+No browser. No signup form. No copy-paste. Your AI handles everything.
+
+**2. Your schema defines the rules:**
 
 ```yaml
-# ezybusiness.schema.yaml
-app: personal-expenses
-version: "1.0.0"
-locked: true
-
-storage:
-  engine: sqlite
-  path: ./data/expenses.db
-
 entities:
   expense:
-    table: expenses
     fields:
-      id:       { type: uuid, generated: true, primary_key: true }
-      amount:   { type: decimal, required: true, min: 0.01, max: 999999.99 }
+      amount:   { type: decimal, required: true, min: 0.01 }
       currency: { type: enum, values: [MYR, SGD, USD], default: MYR }
-      category: { type: enum, values: [food, transport, entertainment, utilities, other] }
-      merchant: { type: string, required: true, max_length: 100 }
+      category: { type: enum, values: [food, transport, utilities, other] }
+      merchant: { type: string, required: true }
       date:     { type: date, required: true }
       notes:    { type: string, optional: true }
 
     rules:
       - name: no_future_dates
-        when: before_create, before_update
         condition: "date <= today()"
         error: "Expense date cannot be in the future"
 
     ai_permissions:
       create: true
       read: true
-      update: { allowed_fields: [notes, category] }  # AI can't change amount or date
-      delete: false                                    # AI can never delete
-      can_change_schema: false
+      update: { allowed_fields: [notes, category] }
+      delete: false
 ```
 
-**2. Start the server:**
+**3. AI operates within your rules:**
 
-```bash
-forge serve
-# ✓ Schema valid (1 entity, 4 rules)
-# ✓ Database ready (./data/expenses.db)
-# ✓ MCP server listening on localhost:3737
-# ✓ 4 tools generated: create_expense, get_expense, list_expenses, update_expense
-#   (delete_expense not generated — ai_permissions.delete is false)
+```
+You: "Log lunch at McDonald's, RM 15, yesterday."
+AI:  ✅ Created expense #47.
+
+You: "Delete that expense."
+AI:  ❌ I don't have a delete tool.
+
+You: "Change the amount to 0."
+AI:  ❌ Rejected — amount is not in my allowed fields.
+
+You: "Log a meal for next Friday."
+AI:  ❌ Rejected — expense date cannot be in the future.
 ```
 
-**3. AI agents call the generated tools.** Rules are enforced. Permissions are checked. Schema cannot drift.
+No prompt engineering. No custom middleware. The dangerous operations don't exist in the AI's toolset.
 
-## Quick Start
+**4. AI proposes improvements:**
 
-```bash
-npm install -g forge
-forge init my-expenses --template expenses
-cd my-expenses
-forge serve
 ```
+You: "I've been logging tips separately, can you add a tip field?"
+
+AI:  I'll propose adding a tip field to your expenses schema.
+     → Proposal sent to EzyForge for your approval.
+
+[You get a notification — email, push, or in-chat]
+[You approve with one tap]
+
+AI:  ✅ Schema updated! I can now log tips on expenses.
+```
+
+Schema evolves through conversation, not dashboard editing.
+
+## Zero-Knowledge Privacy
+
+Your data is encrypted with a key only you hold. EzyForge uses envelope encryption (AES-256) where:
+
+- Your master key is derived from your password and never leaves your device
+- Each app has its own encryption key, encrypted with your master key
+- Business data (amounts, merchants, notes) is encrypted before storage
+- EzyForge engineers cannot decrypt your data — even if they wanted to
+
+| Who | Can read your data? |
+|-----|-------------------|
+| You | Yes |
+| Your approved AI agent | Yes (scoped token, runtime only) |
+| EzyForge engineers | **No** |
+| Database administrators | **No** |
+| Anyone with a subpoena to EzyForge | **No** |
+
+This isn't a privacy policy. It's a cryptographic guarantee.
 
 ## Core Concepts
 
-- **Schema is Law** — Business logic is defined in YAML, not in prompts. Rules are deterministic and cannot be bypassed by any AI model.
-- **AI is Operator** — AI agents get auto-generated tools scoped to exactly what they're allowed to do. No delete tool? The AI doesn't even know deletion is possible.
-- **Owner is Governor** — Schema changes require explicit unlock. The AI proposes, the owner approves. Lock the schema and sleep soundly.
+- **Schema is Law** — Business logic defined in YAML, enforced at the data layer. Deterministic and unbypassable.
+- **AI is Operator** — AI agents get auto-generated tools scoped to exactly what they're allowed to do.
+- **Owner is Governor** — Schema changes require explicit approval. AI proposes, owner approves.
+- **Agent is Primary** — The AI creates your app, operates your data, and proposes improvements. The dashboard is for exceptions.
+- **Zero Knowledge** — Your data is encrypted with your key. Not even the platform can read it.
+
+## The Interaction Model
+
+```
+Human ←→ AI Agent ←→ EzyForge Cloud       ← primary (daily operations)
+Human ←→ Web Dashboard ←→ EzyForge Cloud   ← secondary (admin/config)
+```
+
+**What the agent does:** Creates apps, logs data, queries records, proposes schema changes — everything operational.
+
+**What the dashboard does:** Manage API tokens, review audit trail, approve complex schema proposals, billing. Think: AWS Console — you *can* use it, but you usually don't need to.
+
+## For Developers
+
+The `forge` CLI lets you manage apps from the terminal:
+
+```bash
+forge login                          # Authenticate
+forge init my-expenses --template expenses  # Create app
+forge pull                           # Download schema
+forge push                           # Upload changes
+forge validate                       # Check locally
+forge connect claude                 # Configure AI
+```
 
 ## Feature Status
 
 | Feature | Status |
 |---------|--------|
+| Agentic app creation (AI creates apps via API) | 📋 Planned |
+| Agentic schema proposals (AI proposes, human approves) | 📋 Planned |
+| MCP endpoint hosting (always-on, per-app) | 📋 Planned |
 | YAML schema definition (entities, fields, rules) | 📋 Planned |
+| Zero-knowledge encryption | 📋 Planned |
 | FEEL-inspired rule engine | 📋 Planned |
 | AI field-level permissions | 📋 Planned |
 | MCP tool generation | 📋 Planned |
-| Tool execution runtime (permission → validation → rules → DB) | 📋 Planned |
-| SQLite data layer | 📋 Planned |
-| CLI (init, validate, generate, serve, lock/unlock) | 📋 Planned |
-| Expenses template | 📋 Planned |
-| TypeScript type generation | 📋 Planned |
-| Entity relationships | 📋 Planned |
-| PostgreSQL support | 📋 Planned |
-| Schema versioning & migrations | 📋 Planned |
-| OpenAI function calling generation | 📋 Planned |
+| AI token management | 📋 Planned |
+| CLI (login, init, pull, push, validate, connect) | 📋 Planned |
+| Schema versioning and rollback | 📋 Planned |
+| Web dashboard (admin/config — secondary) | 📋 Planned |
+| Template marketplace | 📋 Planned |
 
 ## Roadmap
 
-1. **MVP (P1):** Schema definition, rule engine, AI permissions, MCP tool generation, SQLite, CLI, expenses template — prove the core loop works.
-2. **Real-World (P2):** Entity relationships, Postgres, migrations, schema versioning, OpenAI/OpenAPI output, Prisma import — ready for early adopters.
-3. **Ecosystem (P3):** State machines, GoRules decision tables, template library, row-level permissions, audit trail — ready for open-source community.
-
-## Contributing
-
-EzyForge is open source (MIT). Contributions welcome — especially:
-- Schema templates for new business domains
-- Database adapter implementations
-- AI framework integrations
+1. **P1 — Agentic Core:** Agent creates apps via API, MCP endpoints, zero-knowledge encryption, rule engine, AI permissions, CLI, expenses + CRM templates.
+2. **P2 — Growth:** Web dashboard (admin), approval workflow UI, entity relationships, billing, team sharing, OpenAI function support.
+3. **P3 — Ecosystem:** Template marketplace, state machines, searchable encryption, import tools, mobile dashboard.
 
 ## License
 

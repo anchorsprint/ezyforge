@@ -2,53 +2,66 @@
 
 ## The Mission
 
-Make business software that AI agents can operate safely — owned by you, defined by you, enforced at the data layer.
+Make business software that AI agents can create, operate, and evolve safely — defined by schema, enforced at the data layer, private even from us.
 
-## The Belief
+## The Beliefs
 
-Business rules must live in the data layer, not in prompts — because prompts are suggestions and the data layer is law.
+**Agents are the primary interface. Dashboards are for exceptions.** — The AI era means agents operate software through tools, not humans clicking through UIs. EzyForge is built for a world where your AI creates the app, operates the data, and proposes improvements. The web dashboard exists for admin tasks — token management, audit review, billing — the way AWS Console exists alongside the CLI. You *can* use it, but you usually don't need to.
 
-Data belongs to the owner, not the vendor. Your schema is a file. Your database is a file. You can move, copy, version, and share them without permission from anyone.
+**Business rules must live in the data layer, not in prompts** — because prompts are suggestions and the data layer is law.
 
-AI replaces UI, not logic. You still need deterministic business rules — you just don't need a fancy dashboard to enforce them.
+**Your data is yours. Not even we can read it.** Zero-knowledge isn't a feature — it's a foundation. The platform encrypts your data with keys only you hold. EzyForge engineers, database admins, and law enforcement serving us a subpoena all see the same thing: ciphertext. This is a technical guarantee, not a policy promise.
+
+**AI replaces UI, not logic.** You still need deterministic business rules — you just don't need a fancy dashboard to enforce them. The AI is the operator. The schema is the interface.
+
+**The cloud is the product.** Developers shouldn't run infrastructure to get safe AI-to-data operations. Tell your AI to set it up, and it's done. The complexity lives in the platform, not on your machine.
 
 ## The Promise
 
-Define your schema once. Your AI can never break your data, your data never leaves your control, and you never need a vendor's permission to run your business.
+Tell your AI to create an app, define the rules, and deploy. Your AI can never break your data, your data is encrypted with your key, and not even we can read it.
 
 ## The Core Insight
 
-Every guardrail product today tries to constrain AI *output* — validating the JSON shape, filtering toxic content, catching prompt injections. But the real damage happens at the *data layer*, after the output looks fine. An expense with a hallucinated date passes every output validator and silently corrupts your reports. The insight competitors miss: **the enforcement point must be the database write, not the model response.** When you generate AI tools directly from a permission-aware schema, dangerous operations don't just fail — they don't exist. An AI that has no delete tool cannot be prompt-injected into deleting. The attack surface isn't mitigated; it's eliminated.
+Every guardrail product today tries to constrain AI *output* — validating the JSON shape, filtering toxic content, catching prompt injections. But the real damage happens at the *data layer*, after the output looks fine. An expense with a hallucinated date passes every output validator and silently corrupts your reports. The first insight: **the enforcement point must be the database write, not the model response.** When you generate AI tools directly from a permission-aware schema, dangerous operations don't just fail — they don't exist. An AI that has no delete tool cannot be prompt-injected into deleting. The attack surface isn't mitigated; it's eliminated.
 
-The second insight: **the SaaS era assumed humans operate software through UIs. The AI era means agents operate software through tools.** When the operator is an AI, you don't need Salesforce's dashboard — you need Salesforce's business logic in a file you own, with an AI that can execute it safely. The entire business software stack is ripe for replacement by something simpler, cheaper, and AI-native.
+The second insight: **the SaaS era assumed humans operate software through UIs. The AI era means agents operate software through tools — and agents should create and configure the software too.** When the operator is an AI, you don't need Salesforce's dashboard — you need Salesforce's business logic enforced deterministically, with an AI that can both execute it safely and set it up in the first place. The entire business software stack — not just the operations, but the setup and configuration — is ripe for replacement by something simpler, cheaper, and AI-native.
+
+The third insight: **privacy must be architectural, not contractual.** Every SaaS platform promises they won't look at your data. But the technical capability exists — their engineers can query your records, support staff can view your data, and a subpoena compels disclosure. When AI operates your business, more data flows through the platform than ever before. The only trustworthy privacy guarantee is one where the platform *cannot* read your data, not one where it *promises* not to. Zero-knowledge architecture is that guarantee.
 
 ## The North Star Metric
 
-**Percentage of AI-to-database writes that pass through EzyForge-enforced schemas.** This measures adoption depth, not vanity. When developers route all their agent writes through EzyForge, they trust it — and that trust is the product.
+**Number of AI-to-database writes processed through EzyForge-enforced schemas per month.** This measures adoption depth and trust. When businesses route their AI operations through EzyForge, they trust both the enforcement and the privacy — and that trust is the product.
 
 ## What We Build For (Priority Order)
 
-1. **Determinism over flexibility.** Every rule produces the same result every time, regardless of which AI model calls it. No probabilistic enforcement.
-2. **Developer trust over developer speed.** We will never trade safety for convenience. If a shortcut weakens enforcement, we don't ship it.
-3. **Elimination over mitigation.** Remove dangerous capabilities from the tool surface rather than catching bad actions after the fact.
-4. **Ownership over convenience.** Your schema is a file. Your database is a file. You never need permission from a vendor to access, move, or modify your own business data.
+1. **Agentic-first over dashboard-first.** Every feature must work through the agent path first. If it requires a browser, it's secondary. The agent creates, operates, and evolves apps. The dashboard observes.
+2. **Determinism over flexibility.** Every rule produces the same result every time. No probabilistic enforcement.
+3. **Privacy over convenience.** We never build features requiring plaintext access to user data.
+4. **Developer trust over developer speed.** Never trade safety for convenience.
+5. **Elimination over mitigation.** Remove dangerous capabilities from the tool surface.
+6. **Simplicity over power.** Tell your AI to set it up. If onboarding takes more than one conversation, we've failed.
 
 ## What We Never Build
 
-1. **An AI model or AI wrapper.** EzyForge is the boundary between AI and data. We never become the AI itself — that creates the conflict of interest we exist to solve.
-2. **A general-purpose database.** We enforce rules on writes and generate tools. Storage is pluggable. The moment we compete with Supabase or PlanetScale, we've lost focus.
-3. **Prompt-based guardrails.** We will never ship a feature that depends on an LLM following instructions to enforce safety. If it can be bypassed by a creative prompt, it doesn't belong in EzyForge.
-4. **A SaaS platform that locks in your data.** If we can't export everything in one command, we've failed. The moment your data requires our platform to be useful, we've become the problem we set out to solve.
+1. **An AI model or AI wrapper.** We're the boundary between AI and data.
+2. **A general-purpose database.** We enforce rules and generate tools. Storage is pluggable.
+3. **Prompt-based guardrails.** If it can be bypassed by a creative prompt, it doesn't belong.
+4. **A platform that can access user data.** No backdoors, no admin panels, no analytics on user data.
+5. **A self-hosted product.** The cloud platform is the product.
+6. **A dashboard-first product.** The primary interface is the agent. We will never build a feature that requires the human to open a browser for daily operations.
 
 ## The Product in One Demo
 
-**The Developer Demo.** The developer opens `expenses.schema.yaml` — 25 lines defining an expense entity with amount, currency, category, date, and notes. Under `ai_permissions`: create is true, delete is false, update is restricted to notes and category only. One rule: `date <= today()`. They run `forge serve`. Terminal shows: 4 tools generated (create, read, list, update) — no delete tool. They point Claude at the MCP server. "Log lunch at McDonald's, RM 15, yesterday." It works. "Now delete that expense." Claude says it can't — it has no delete tool. "Change the amount to 0." Rejected — amount is not in `allowed_fields`. "Log a meal for next Friday." Rejected — rule engine blocks future dates. The wow moment: the AI isn't being told "no" by a prompt. The dangerous operations *literally do not exist in its toolset.*
+**The Agentic Demo.** Jazz tells his AI assistant (OpenClaw): "Create me a personal expenses app on EzyForge." The AI calls the EzyForge API, picks the expenses template, deploys it, and configures the MCP connection — all in one conversation turn. "Done! Your expenses app is live. I can log expenses and query spending. I cannot delete or change amounts." Jazz says "Log lunch at McDonald's, RM 15, yesterday." It works. "Now delete that expense." The AI says it can't — it has no delete tool. "Change the amount to 0." Rejected — amount not in allowed_fields. "Log a meal for next Friday." Rejected — rule engine blocks future dates. Jazz never opened a browser. Jazz never copied a URL. Jazz never clicked Deploy. The AI did everything. Jazz asks: "Can EzyForge engineers see my data?" The honest answer: "No. They literally can't."
 
-**The Business Owner Demo.** Raj runs `forge init my-crm --template crm`, runs `forge serve`, connects his WhatsApp AI. A customer messages asking about their order. The AI checks the schema, finds the order, responds with the status. Raj updates a supplier contact by telling the AI "change Acme's phone number to 03-1234." It updates the allowed field. Raj never opened a dashboard. His data lives in a SQLite file on his machine. He pays $0/month in software subscriptions.
+**The Business Owner Demo.** Raj tells his WhatsApp AI: "Set up a CRM for my logistics company on EzyForge." The AI creates the app, picks the CRM template, adds a shipment_status field (with Raj's approval via a quick chat confirmation). A customer messages asking about their order. The AI checks the CRM, finds the order, responds with the status. Raj updates a supplier contact by telling the AI "change Acme's phone number to 03-1234." It updates the allowed field. Raj never opened a dashboard. He never visited ezyforge.io. He pays a fraction of his previous SaaS bill. His data is encrypted — even EzyForge can't see his customer list.
 
 ## How We Know We're Winning
 
-1. **Developers stop writing custom validation middleware for AI agents** — they point to their EzyForge schema file instead of showing you 200 lines of hand-rolled permission checking code.
-2. **Schema files appear in open-source repos alongside README.md** — the format becomes a convention for describing what AI can and can't do with your data.
-3. **A developer who has never used EzyForge reads a schema file and understands it in 30 seconds** — the format is so intuitive that it becomes documentation, not just configuration.
-4. **A business owner tells us they cancelled their Salesforce subscription** — because forge + AI does the job for the cost of a database file and an API key.
+1. **An AI agent creates an EzyForge app, connects, and starts operating — without the human touching a browser** — the agentic onboarding works end-to-end.
+2. **Developers stop writing custom validation middleware for AI agents** — they point to their EzyForge schema instead.
+3. **A business owner tells us they cancelled their Salesforce subscription** — because EzyForge + AI does the job at a fraction of the cost, with better privacy.
+4. **A user asks "can you see my data?" and the honest answer is "no, we literally can't"** — zero-knowledge is the architecture.
+5. **Schema files become a convention** — the format appears in blog posts and open-source repos as the standard way to describe what AI can and can't do.
+6. **A healthcare startup or financial services company adopts EzyForge specifically because of the privacy architecture** — zero-knowledge opens markets others can't enter.
+7. **Users never need to open the dashboard for daily operations** — the agent handles everything, and the dashboard is only visited for admin tasks.

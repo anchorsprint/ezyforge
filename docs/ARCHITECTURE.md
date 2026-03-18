@@ -2,380 +2,548 @@
 
 ## System Overview
 
+EzyForge is an agentic-first cloud platform. The primary interface is an AI agent (Claude, GPT, OpenClaw, Gemini) connecting via MCP. The agent creates apps, operates data, and proposes schema changes. The web dashboard exists for admin tasks — token management, audit review, billing — not for daily operations.
+
+The core engine (schema → rules → permissions → tools → database) runs server-side. User data is encrypted with user-held keys — the platform cannot read it.
+
 ```
-                         ┌─────────────────────┐
-                         │   YAML Schema File   │
-                         │ (ezybusiness.schema  │
-                         │       .yaml)         │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │   Schema Registry    │
-                         │  (parse + validate)  │
-                         └──────────┬───────────┘
-                                    │
-                      ┌─────────────┼─────────────┐
-                      │             │             │
-                      ▼             ▼             ▼
-              ┌──────────┐  ┌────────────┐  ┌───────────┐
-              │  Schema   │  │   Tool     │  │   Type    │
-              │ Compiler  │  │ Generator  │  │ Generator │
-              │(→ JSON    │  │(→ MCP /    │  │(→ .d.ts)  │
-              │  Schema)  │  │  OpenAI)   │  │           │
-              └──────────┘  └─────┬──────┘  └───────────┘
-                                  │
-                                  ▼
-         ┌────────────────────────────────────────────┐
-         │            Tool Execution Runtime           │
-         │                                             │
-         │  ┌────────────┐  ┌──────────┐  ┌────────┐  │
-         │  │ Permission  │→│   Rule   │→│  Data  │  │
-         │  │   Layer     │  │  Engine  │  │ Layer  │  │
-         │  └────────────┘  └──────────┘  └────────┘  │
-         └────────────────────┬───────────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              │               │               │
-              ▼               ▼               ▼
-        ┌──────────┐   ┌──────────┐   ┌──────────┐
-        │ MCP      │   │ REST     │   │ CLI      │
-        │ Server   │   │ API      │   │          │
-        └────┬─────┘   └────┬─────┘   └────┬─────┘
-             │              │              │
-             ▼              ▼              ▼
-        AI Agents      Human Apps      Developer
-        (Claude,       (web, mobile)
-        OpenClaw)
+                         ┌──────────────────────────────────────────────────────┐
+                         │                     ezyforge.io                       │
+                         │                                                       │
+                         │  ┌──────────┐  ┌──────────────┐  ┌──────────────┐   │
+                         │  │  Auth &   │  │  App Manager  │  │  Template    │   │
+                         │  │ Identity  │  │  (create,     │  │  Registry    │   │
+                         │  │ (Clerk /  │  │   deploy,     │  │              │   │
+                         │  │  Auth.js) │  │   propose)    │  │              │   │
+                         │  └─────┬────┘  └──────┬───────┘  └──────┬───────┘   │
+                         │        │              │                  │            │
+                         │        ▼              ▼                  ▼            │
+                         │  ┌──────────────────────────────────────────────┐     │
+                         │  │          Multi-Tenant App Router              │     │
+                         │  │    (isolates apps, routes by app_id)         │     │
+                         │  └────────────────────┬─────────────────────────┘     │
+                         │                       │                               │
+                         │         ┌─────────────┼─────────────┐                │
+                         │         │             │             │                 │
+                         │         ▼             ▼             ▼                 │
+                         │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+                         │  │  MCP     │  │  REST    │  │  Web     │           │
+                         │  │ Endpoint │  │  API     │  │ Dashboard│           │
+                         │  │ (per app)│  │          │  │          │           │
+                         │  │ PRIMARY  │  │ AGENT +  │  │ SECONDARY│           │
+                         │  │          │  │ ADMIN    │  │          │           │
+                         │  └────┬─────┘  └────┬─────┘  └────┬─────┘           │
+                         │       │             │             │                  │
+                         │       └─────────────┼─────────────┘                  │
+                         │                     ▼                                │
+                         │  ┌──────────────────────────────────────────────┐    │
+                         │  │          EzyForge Engine Kernel                │    │
+                         │  │                                               │    │
+                         │  │  Schema    Permission   Rule    Tool          │    │
+                         │  │  Registry → Layer    → Engine → Runtime       │    │
+                         │  └──────────────────────┬───────────────────────┘    │
+                         │                         │                            │
+                         │                         ▼                            │
+                         │  ┌──────────────────────────────────────────────┐    │
+                         │  │        Zero-Knowledge Data Layer              │    │
+                         │  │                                               │    │
+                         │  │  Encrypt/Decrypt ←→ User-Held Keys           │    │
+                         │  │  (app-level envelope encryption)              │    │
+                         │  └──────────────────────┬───────────────────────┘    │
+                         │                         │                            │
+                         │                         ▼                            │
+                         │  ┌──────────────────────────────────────────────┐    │
+                         │  │           Encrypted Postgres                  │    │
+                         │  │   (per-app encrypted columns,                │    │
+                         │  │    platform cannot decrypt)                   │    │
+                         │  └──────────────────────────────────────────────┘    │
+                         └──────────────────────────────────────────────────────┘
+
+         External connections (ordered by importance):
+
+         1. AI Agents ────────── MCP Endpoint (PRIMARY — all data operations)
+            (Claude, GPT,           ↑
+             OpenClaw, Gemini)      │ Agent creates apps, operates data, proposes changes.
+                                    │ Token-scoped. Every action logged.
+                                    │ This is the MAIN interface to EzyForge.
+
+         2. AI Agents ────────── REST API (app lifecycle + management)
+                                    │ POST /api/apps — agent creates app from template
+                                    │ POST /api/apps/{id}/proposals — agent proposes schema changes
+                                    │ GET /api/apps/{id}/tools — agent discovers available tools
+                                    │ Agent-initiated, not human-initiated.
+
+         3. App Owner ────────── Web Dashboard (SECONDARY — admin/config only)
+                                    │ Approve/reject schema proposals
+                                    │ Manage API tokens
+                                    │ Review audit trail
+                                    │ Billing and subscription
+                                    │ Emergency schema unlock / export data
+                                    │ NOT for daily data entry or querying.
+
+         4. forge CLI ────────── REST API (developer helper tool)
+                                    │ Login, pull/push schema, validate locally
+                                    │ Helper — not the product.
 ```
+
+---
+
+## The Agentic Interaction Model
+
+EzyForge is designed for a world where AI agents are the primary operators of business software. There are two paths into the platform, and they are not equal.
+
+```
+Human ←→ AI Agent ←→ EzyForge Cloud
+              ↑
+        (primary path — daily operations, app creation, data CRUD)
+
+Human ←→ Web Dashboard ←→ EzyForge Cloud
+              ↑
+        (secondary path — admin, config, approvals, billing)
+```
+
+The primary path handles 95%+ of interactions. The secondary path exists for the things that require human judgment or governance — approving schema changes, managing billing, reviewing audit trails.
+
+### Agentic Flow 1: App Creation (Agent-Initiated)
+
+The agent creates apps on behalf of the human. No web UI needed.
+
+```
+1. Human → AI Agent:
+   "Set up an expense tracker for me on EzyForge"
+
+2. AI Agent → EzyForge REST API:
+   POST /api/apps { template: "expenses", name: "Jazz's Expenses" }
+
+3. EzyForge → AI Agent:
+   {
+     app_id: "abc-123",
+     mcp_endpoint: "mcp.ezyforge.io/app/abc-123",
+     token: "eyJ...",
+     tools: ["create_expense", "list_expenses", "update_expense"]
+   }
+
+4. Agent auto-configures its MCP connection.
+   No human copy-paste needed. No dashboard visit required.
+
+5. AI Agent → Human:
+   "Done! Your expenses app is live. I can log expenses,
+    update notes and categories, and query your spending.
+    I cannot delete expenses or change amounts — your schema
+    prevents that. Want me to log something?"
+```
+
+### Agentic Flow 2: Data Operations (100% Through Agent)
+
+All CRUD happens via MCP tools. The human never opens a form, table, or dashboard to manage records.
+
+```
+Human: "Log lunch at McDonald's, RM 15"
+Agent → MCP: create_expense({ amount: 15, merchant: "McDonald's", category: "food", date: "2026-03-18" })
+EzyForge: permission check ✓ → validation ✓ → rules ✓ → encrypt → write → audit log
+Agent → Human: "Logged! Expense #47 — RM 15 at McDonald's."
+```
+
+The human talks to the AI. The AI talks to EzyForge. The human never touches a CRUD interface.
+
+### Agentic Flow 3: Schema Changes (Agent-Proposed, Human-Approved)
+
+Schema is locked after first deploy. The AI cannot unilaterally change it — but it can propose changes.
+
+```
+1. Agent notices a pattern:
+   "Jazz keeps logging expenses with a 'project' in the notes field.
+    A dedicated project field would be better."
+
+2. AI Agent → EzyForge REST API:
+   POST /api/apps/abc-123/proposals
+   {
+     description: "Add 'project' enum field to expense entity",
+     diff: { ... schema changes ... }
+   }
+
+3. EzyForge queues the proposal. Schema remains unchanged.
+
+4. Human is notified:
+   - Email: "Your AI proposed a schema change for Jazz's Expenses"
+   - Push notification on mobile
+   - In-chat: agent tells the human "I've proposed adding a project field.
+     You can approve it when you're ready."
+
+5. Human approves (via email link, dashboard, or in-chat command).
+
+6. EzyForge applies the change. Schema version incremented.
+   New tools generated. Agent automatically receives updated tool set.
+
+7. Agent → Human: "The project field is live. I'll start using it."
+```
+
+### What the Web Dashboard Is For (Admin Only)
+
+The dashboard is not the product — the AI integration is. The dashboard exists for tasks that require human authority or oversight:
+
+- **Manage API tokens** — create, revoke, set expiry for AI agent tokens
+- **Review audit trail** — see every AI operation, filtered by tool/time/result
+- **Approve/reject schema proposals** — diff view of proposed changes
+- **Billing and subscription** — plan management, usage, invoices
+- **Emergency schema unlock** — manual override when needed
+- **Export data** — download decrypted data (client-side decryption in browser)
+
+The dashboard is explicitly NOT for:
+- Data entry (use the AI agent)
+- Querying records (ask the AI agent)
+- Daily operations of any kind (the AI agent handles this)
 
 ---
 
 ## Core Components
 
-### 1. Schema Registry
+### 1. Auth & Identity
 
-**Responsibility:** Parses the YAML schema file into a validated internal representation. The single source of truth for all entity definitions, rules, and permissions.
+Handles user registration, session management, and the cryptographic identity that underpins zero-knowledge.
 
-**Inputs:** `ezybusiness.schema.yaml` file on disk.
+- **User registration** via email + OAuth (Google, GitHub) through Clerk or Auth.js
+- **Master encryption key** derived on signup from user's password (PBKDF2 or Argon2). The key never leaves the client. The server never sees it in plaintext.
+- **API tokens** scoped per-app and per-AI-agent. Each token is revocable with configurable expiry. Tokens are the only way AI agents authenticate.
+- **Agent authentication** — agents authenticate via API keys to create apps, get MCP tokens, and call the REST API. The agent is a first-class citizen, not an afterthought bolted onto a human auth flow.
 
-**Outputs:** Validated schema object in memory — entities, fields, rules, AI permissions, metadata. Or a list of validation errors with line numbers.
+### 2. Multi-Tenant App Router
 
-**Key design decisions:**
-- YAML is the authoring format (human-readable, LLM-readable, git-diffable). The runtime never works with raw YAML — it's always parsed and validated first.
-- Validation is strict and exhaustive. Unknown field types, conflicting constraints (`min: 10, max: 5`), references to nonexistent fields — all caught at parse time, not runtime.
-- The registry is a pure function: no side effects, no database access. Parse in, schema object out.
+Every request is routed and isolated by `app_id`.
 
----
+- **Logical isolation** — each app has its own schema, encrypted data partition, and token set. All database queries are scoped by `app_id`. No cross-app data access is possible.
+- **Rate limiting** per app and per token. A single misbehaving agent cannot affect other apps or other users.
+- **Routing** — incoming requests (MCP, REST, dashboard) are resolved to the correct app context before reaching the engine kernel.
 
-### 2. Schema Compiler
+### 3. Template Registry
 
-**Responsibility:** Transforms the internal schema representation into standard JSON Schema (draft 2020-12) with custom vocabularies for EzyForge-specific features.
+Pre-built YAML schema templates that encode best-practice business schemas with rules and permissions already configured.
 
-**Inputs:** Validated schema object from the registry.
+- Templates are selected by the **agent**, not by a human browsing a gallery. The agent calls the REST API with a template name, and the platform provisions everything — schema, encryption keys, MCP endpoint, tokens, tools.
+- Templates include: entity definitions, field types and constraints, business rules, AI permission scopes, and example data shapes.
+- Built-in templates: expenses (dogfood), CRM. More added over time.
+- Templates are starting points. The agent or user can propose modifications after deployment.
 
-**Outputs:** JSON Schema document with `$vocabulary` entries for `x-ai-permissions`, `x-business-rules`, `x-schema-governance`.
+### 4. EzyForge Engine Kernel
 
-**Key design decisions:**
-- Built on JSON Schema because it's the universal schema language — MCP, OpenAI, LangChain all consume it natively.
-- Custom vocabularies are a *blessed* JSON Schema extension mechanism, not a hack. Standard validators ignore them gracefully; EzyForge-aware tools consume them.
-- Compilation is one-way: YAML → JSON Schema. No round-tripping. The YAML file is always the source of truth.
+The engine kernel is the core of EzyForge. Every data operation — whether from an AI agent via MCP, a REST API call, or the dashboard — passes through the same pipeline.
 
----
+#### 4a. Schema Registry
 
-### 3. Rule Engine
+Parses YAML schema definitions into validated, immutable runtime objects.
 
-**Responsibility:** Evaluates business rules deterministically on every CRUD operation. Runs conditions, triggers actions (reject, warn, require_approval, tag, set_field).
+- **YAML in, immutable object out.** The parser validates structure, field types, constraints, rules, and permissions. If anything is invalid, it fails with structured errors.
+- **Immutable at runtime.** Once parsed, the schema object is frozen. No code path can modify it. Schema changes go through the proposal/approval workflow.
+- **Versioned.** Every deployment creates a new schema version. Previous versions are retained for rollback.
 
-**Inputs:** A rule definition (condition + action + lifecycle hook) and the record being operated on (new values, old values for updates).
+#### 4b. Permission Layer
 
-**Outputs:** Pass (operation proceeds), reject (operation blocked with error), warn (operation proceeds with warning), require_approval (operation queued).
+Controls what AI agents can and cannot do at the field level.
 
-**Key design decisions:**
-- FEEL-inspired expression language — safe, sandboxed, no arbitrary code execution. Supports comparisons, boolean logic, date functions, string functions, and `IN` operator.
-- Rules are ordered and execute synchronously. Same input always produces the same result. No async, no network calls, no randomness.
-- Before-hooks can block writes. After-hooks run side effects (tagging, notifications) but cannot roll back the write.
-- Separate from field validation — validation checks types and ranges, rules check business semantics.
+- **Two roles:** `owner` (full access) and `ai` (restricted). MCP requests always run as `ai`. Dashboard requests run as `owner`.
+- **CRUD-level toggles** per entity: `create: true`, `read: true`, `update: { allowed_fields: ["notes", "category"] }`, `delete: false`.
+- **Shapes tool generation.** If `delete: false`, no delete tool is generated. The AI cannot be prompt-injected into deleting because the delete capability does not exist. The attack surface is eliminated, not mitigated.
+- **Field-level enforcement on updates.** Even if an AI crafts a request to update `amount`, the permission layer rejects it before it reaches validation or rules.
 
----
+#### 4c. Rule Engine
 
-### 4. Permission Layer
+Deterministic business rule evaluation using a FEEL-inspired expression language.
 
-**Responsibility:** Enforces AI field-level access control on every operation. The first checkpoint in the execution pipeline — runs before validation and rules.
+- **Before/after hooks:** `before_create`, `before_update`, `after_create`, `after_update`. Rules run at the specified lifecycle point.
+- **FEEL-inspired conditions:** comparisons (`>`, `<`, `=`), boolean logic (`and`, `or`, `not`), date functions (`today()`, `now()`, `day_of_week()`), membership (`IN`), string functions (`contains()`, `starts_with()`).
+- **Deterministic.** Same input always produces the same result, regardless of which AI model triggered the operation. No randomness, no probabilistic evaluation.
+- **Actions:** `reject` (block the operation with a reason), `warn` (allow but flag), `require_approval` (queue for human review), `tag` (add metadata), `set_field` (auto-populate a field value).
+- **Sandboxed.** The expression evaluator has no file I/O, no network access, no code execution. It evaluates expressions against the record context and nothing else.
 
-**Inputs:** Operation request (entity, action, fields, caller role).
+#### 4d. Tool Generator
 
-**Outputs:** Allow or deny with structured reason.
+Automatically generates MCP tool definitions from the schema and permission configuration.
 
-**Key design decisions:**
-- Defense in depth: even if a tool definition accidentally exposes a restricted field, the permission layer blocks it at execution time.
-- Two built-in roles in MVP: `owner` (unrestricted) and `ai` (restricted per `ai_permissions`). Role is determined by caller context — MCP/tool calls default to `ai`, CLI defaults to `owner`.
-- Cannot be bypassed. No admin override for AI callers. This is the core security guarantee.
-- Permissions shape tool generation: if AI can't delete, no delete tool is generated. Belt and suspenders.
+- **No hand-coded tools.** Every tool is generated from the schema. This guarantees that tools always match the current schema version and permission set.
+- **Permission-aware generation.** If the AI role cannot delete, no delete tool exists. If the AI role can only update `notes` and `category`, the update tool's input schema only includes those fields.
+- **Constraint-aware.** Tool input schemas include field constraints (required, type, enum values, min/max) so AI agents can validate before calling.
+- **Output:** Valid MCP tool definitions in JSON, discoverable by any MCP-compatible AI agent.
 
----
+#### 4e. Tool Execution Runtime
 
-### 5. Tool Generator
+The single pipeline that every tool call passes through.
 
-**Responsibility:** Auto-generates AI-compatible tool definitions from the schema, respecting AI permissions.
+```
+Tool Call In
+    │
+    ▼
+Permission Check ── denied? → { error: "permission_denied", field: "amount" }
+    │
+    ▼
+Field Validation ── invalid? → { error: "validation_error", fields: [...] }
+    │
+    ▼
+Rule Engine (before hooks) ── rejected? → { error: "rule_violation", rule: "no_future_dates" }
+    │
+    ▼
+Encrypt (Zero-Knowledge Layer)
+    │
+    ▼
+Database Write (scoped by app_id)
+    │
+    ▼
+Rule Engine (after hooks)
+    │
+    ▼
+Audit Log (encrypted)
+    │
+    ▼
+Response Out
+```
 
-**Inputs:** Compiled schema with entities and AI permissions.
+- **Single execution path.** There is no shortcut. MCP calls, REST calls, and dashboard operations all pass through the same pipeline.
+- **Structured errors.** Every failure returns a machine-readable error: `permission_denied`, `rule_violation`, `validation_error`. AI agents can parse these and explain them to the human.
+- **Atomic transactions.** Each tool execution is a single database transaction. If any step fails, nothing is written.
 
-**Outputs:** MCP tool definitions (JSON), OpenAI function definitions (JSON), TypeScript type definitions (`.d.ts`).
+### 5. Zero-Knowledge Data Layer
 
-**Key design decisions:**
-- Tool definitions are *shaped by permissions*. If `delete: false`, no delete tool exists — the AI doesn't even know deletion is possible.
-- `update: { allowed_fields: [notes, category] }` generates an update tool whose input schema *only includes* notes and category. The AI literally cannot submit a field it's not allowed to touch.
-- Tool descriptions pull from field `description` values in the schema, giving the AI context about what each field means.
-- MCP is the primary output format. OpenAI function format is nearly identical (both use JSON Schema for parameters).
+The privacy architecture that ensures EzyForge cannot read user business data.
 
----
+#### Envelope Encryption Architecture
 
-### 6. Tool Execution Runtime
+```
+User Password
+    │
+    ▼ (PBKDF2 / Argon2, client-side)
+Master Key (MK)
+    │
+    ▼ (encrypts)
+App Data Key (ADK) ── one per app, generated on app creation
+    │
+    ▼ (encrypts)
+Field Values ── each business data field encrypted individually
+```
 
-**Responsibility:** Executes tool calls against the database through the full enforcement pipeline: permission check → field validation → before-rules → database write → after-rules → response.
+#### How It Works
 
-**Inputs:** Tool call (operation name + parameters) from any caller (AI agent, REST API, CLI).
+1. **Signup:** User's password derives a Master Key (MK) via PBKDF2 or Argon2. This happens client-side. The MK never reaches the server.
+2. **App creation:** Platform generates a random App Data Key (ADK). The ADK is encrypted with the user's MK and stored. The platform stores only the encrypted ADK — it cannot decrypt it.
+3. **AI writes data:** The tool execution runtime encrypts each business data field with the ADK before writing to Postgres. Platform metadata (app_id, timestamps, token hashes) is stored in plaintext — only user business content is encrypted.
+4. **Dashboard reads data:** The browser decrypts the ADK using the user's MK (derived from their password), then decrypts field values client-side. The server serves ciphertext; the browser renders plaintext.
 
-**Outputs:** Operation result (created/updated/queried record) or structured error (permission_denied, rule_violation, validation_error).
+#### AI Agent Access Model
 
-**Key design decisions:**
-- Single execution path for all callers. AI agents, REST API clients, and CLI commands all go through the same pipeline. No shortcuts.
-- Each operation is atomic — wrapped in a database transaction.
-- Errors are structured and typed: `{ error: "rule_violation", rule: "no_future_dates", message: "Expense date cannot be in the future" }`. AI agents can understand and relay these errors.
-- List operations support filtering, sorting, and pagination. Aggregate operations (sum, count, avg) respect permission-defined `group_by` constraints.
+AI agents need to read and write data, which means they need decryption capability — but only during execution.
 
----
+- **Session-scoped decryption.** The ADK is loaded into memory only for the duration of a tool execution. It is not persisted, cached, or logged.
+- **In-memory only.** The decrypted ADK exists in the engine process memory during request handling. After the response is sent, it is discarded.
+- **No plaintext in logs.** Business data never appears in application logs, error messages, monitoring, or analytics. Only ciphertext and metadata.
 
-### 7. Data Layer
+#### Who Can Access User Data
 
-**Responsibility:** Adapter between the execution runtime and the database. Handles table creation, queries, and type mapping.
+| Actor | Can read business data? | Why |
+|-------|------------------------|-----|
+| App owner | Yes | Holds the Master Key, decrypts client-side |
+| AI agent (authorized) | Yes (scoped) | Session-scoped ADK, field-level permissions |
+| AI agent (unauthorized) | No | Token rejected, no ADK access |
+| EzyForge engineers | No | No access to MK or plaintext ADK |
+| Database administrators | No | All business columns contain ciphertext |
+| Law enforcement (subpoena) | No | Platform cannot decrypt — can only hand over ciphertext |
 
-**Inputs:** CRUD operation requests from the execution runtime.
+#### Tradeoffs
 
-**Outputs:** Database results (records, row counts, aggregates).
+- **Search and filter:** AES-SIV is used for fields marked `filterable` — it produces deterministic ciphertext, enabling equality lookups. AES-GCM is used for sensitive fields — fully random ciphertext, no search capability.
+- **Aggregation:** Sum, average, and other aggregations cannot run on encrypted data in the database. Aggregation must happen in-memory after decryption, which limits scale for large datasets.
+- **Key loss:** If the user loses their password and has no recovery phrase, their data is unrecoverable. This is by design — it is the cost of zero-knowledge. Optional recovery phrases mitigate this risk.
 
-**Key design decisions:**
-- SQLite for MVP (zero setup, file-based, portable). Postgres in Phase 2 (concurrent connections, production-grade).
-- Auto-creates tables from schema on first run. No manual SQL. The developer defines YAML, the database just works.
-- Type mapping is explicit: `decimal` → REAL (SQLite) / NUMERIC (Postgres), `enum` → TEXT with CHECK constraint, `date` → TEXT ISO 8601 (SQLite) / DATE (Postgres).
-- Database adapter is a clean interface — swapping SQLite for Postgres requires no changes to the rest of the stack.
+### 6. MCP Hosting
 
----
+The primary interface to EzyForge. AI agents connect here for all data operations.
 
-### 8. CLI
+- **Always-on endpoints:** `mcp.ezyforge.io/app/{app_id}`. Each deployed app gets a persistent MCP endpoint.
+- **Token-authenticated.** Every MCP connection requires a valid per-agent token. Tokens are scoped to a single app and can be revoked instantly.
+- **Per-agent tokens.** Different AI agents (Claude via OpenClaw, GPT via API, local LLM) can each have their own token with independent rate limits and audit trails.
+- **MCP over HTTP (streamable)** for cloud-hosted agents. Stdio transport available for local CLI bridging via `forge connect`.
+- **Tool discovery.** AI agents can enumerate available tools on connection. Tools reflect the current schema version and permission set. When the schema changes, tools update automatically.
 
-**Responsibility:** Developer interface for project management — init, validate, generate, serve, lock/unlock, status.
+### 7. Web Dashboard (Secondary Interface)
 
-**Inputs:** Commands and flags.
+The dashboard exists for admin tasks that require human judgment. It is not the primary interface.
 
-**Outputs:** Console output, generated files, running server.
+- **Built with Next.js + Tailwind CSS.** Client-side decryption — the server never sees plaintext business data.
+- **Approve/reject schema proposals** — diff view showing exactly what the AI proposes to change, with approve/reject buttons.
+- **Manage API tokens** — create new tokens for AI agents, set expiry, revoke compromised tokens.
+- **Audit trail** — timeline of every AI operation, filterable by tool, result, and time range. Encrypted with the App Data Key, decrypted client-side.
+- **Billing and subscription** — plan management, usage metrics, invoices.
+- **Emergency schema unlock** — manual override to unlock a locked schema when needed.
+- **Data export** — download decrypted data as CSV/JSON (decryption happens in browser).
 
-**Key commands:**
-| Command | What it does |
+The dashboard is **NOT** for:
+- Data entry — use the AI agent
+- Querying records — ask the AI agent
+- Daily business operations of any kind
+
+### 8. Approval Workflow
+
+Schema governance that keeps the human in control without requiring them to operate the software.
+
+- **Schema locked by default** after first deployment. Neither the AI agent nor the platform can modify a locked schema unilaterally.
+- **AI proposes, human approves.** The agent calls `POST /api/apps/{id}/proposals` with a description and diff. EzyForge queues the proposal without applying it.
+- **User notified through multiple channels:**
+  - Email with a one-click approve/reject link
+  - Push notification (mobile)
+  - In-agent notification (the AI tells the human about the pending proposal)
+  - Dashboard (if the user happens to visit)
+- **Approval can happen anywhere.** The user does not need to open the dashboard. An email link or in-chat confirmation is sufficient.
+- **Changes versioned.** Every approved change creates a new schema version. Rollback to any previous version is available.
+- **Rejection feedback.** When a user rejects a proposal, they can provide a reason. The agent receives this feedback and can adjust its next proposal.
+
+### 9. CLI (forge)
+
+A developer helper tool for terminal-oriented workflows. Not the product.
+
+| Command | Description |
 |---------|-------------|
-| `forge init <name>` | Create new project with schema file |
-| `forge validate` | Check schema for errors (no side effects) |
-| `forge generate` | Output MCP tools, TypeScript types |
-| `forge serve` | Start local server (REST + MCP) |
-| `forge lock` / `unlock` | Toggle schema governance |
-| `forge status` | Show project state |
+| `forge login` | Authenticate with ezyforge.io (OAuth or API key) |
+| `forge init` | Create new app from template (calls cloud API, returns MCP endpoint) |
+| `forge pull` | Download current schema from cloud to local YAML file |
+| `forge push` | Validate and deploy local schema changes to cloud |
+| `forge validate` | Check schema for errors locally (works offline) |
+| `forge connect` | Output MCP config for Claude, OpenClaw, GPT, etc. |
+| `forge logs` | Stream audit trail for an app |
+| `forge status` | Show app status — schema version, active tokens, MCP endpoint |
 
----
+The CLI is a convenience layer over the REST API. Everything it does can also be done by the AI agent or the dashboard. It exists for developers who prefer terminal workflows.
 
-### 9. MCP Server
+### 10. Audit Trail
 
-**Responsibility:** Exposes generated tools to AI agents via the Model Context Protocol. The bridge between EzyForge and the AI ecosystem.
+Every AI operation is logged. No exceptions.
 
-**Inputs:** MCP tool calls from AI agents (JSON-RPC over stdio or HTTP).
-
-**Outputs:** Tool execution results routed through the full pipeline.
-
-**Key design decisions:**
-- Part of `forge serve` — not a separate process. One command starts both REST and MCP.
-- Tools are discoverable: AI agents can query the tool list and see exactly what operations are available with what parameters.
-- Runs locally by default (port 3737). No authentication in MVP — designed for local development. Production auth comes in Phase 2.
+- **What is logged:** token ID, tool name, input parameters (encrypted), result (success/error), timestamp, schema version.
+- **Encrypted with App Data Key.** Audit trail entries are encrypted the same way as business data. Only the app owner can read them.
+- **Visible to app owner** via the dashboard (client-side decryption) or CLI (`forge logs`).
+- **Immutable.** Audit entries cannot be modified or deleted by any party — not the AI agent, not the user, not EzyForge engineers.
+- **Filterable.** By tool name, result status, time range, and token ID. Useful for debugging AI behavior and compliance reporting.
 
 ---
 
 ## Data Flow
 
-**Scenario:** An AI agent (via OpenClaw) wants to create an expense: "Jazz spent RM 45 on lunch at McDonald's today."
+### Happy Path: AI Creates an Expense
 
 ```
-1. AI Agent → MCP Server
-   Tool call: create_expense({
-     amount: 45.00, currency: "MYR", category: "food",
-     merchant: "McDonald's", date: "2026-03-18"
-   })
+1. AI Agent → MCP Endpoint (mcp.ezyforge.io/app/abc-123)
+   Tool: create_expense
+   Token: eyJ...
+   Params: { amount: 15.00, merchant: "McDonald's", category: "food", date: "2026-03-18" }
 
-2. MCP Server → Tool Execution Runtime
-   Routes to create handler for "expense" entity.
+2. Multi-Tenant App Router
+   → Validates token → resolves app_id → loads app context (schema, permissions, ADK)
 
-3. Permission Layer ✓
-   Checks: Is AI allowed to create expense? → Yes (create: true).
-   Checks: Are all submitted fields writable? → Yes (all are input fields).
+3. Permission Layer
+   → Role: ai
+   → Operation: create on expense entity
+   → Check: ai.create = true ✓
+   → All provided fields are within allowed scope ✓
 
-4. Field Validation ✓
-   amount: 45.00 — decimal, 0.01–999999.99 → pass
-   currency: "MYR" — enum [MYR, SGD, USD] → pass
-   category: "food" — enum [food, transport, ...] → pass
-   merchant: "McDonald's" — string, 1–100 chars → pass
-   date: "2026-03-18" — date format → pass
+4. Field Validation
+   → amount: decimal, required, > 0 ✓
+   → merchant: string, required ✓
+   → category: enum ["food", "transport", "utilities", ...] ✓
+   → date: date, required ✓
 
-5. Before-Rules ✓
-   no_future_dates: "2026-03-18" <= today() → pass
-   reasonable_amount: 45.00 <= 50000 → pass
-   duplicate_detection: no matching record found → pass
+5. Rule Engine (before_create)
+   → Rule "no_future_dates": date <= today() → 2026-03-18 <= 2026-03-18 ✓ PASS
+   → Rule "auto_tag_weekend": day_of_week(date) IN ["Saturday", "Sunday"] → Wednesday → SKIP
 
-6. Data Layer → SQLite
-   INSERT INTO expenses (id, amount, currency, category, merchant,
-     date, created_at, updated_at)
-   VALUES (uuid(), 45.00, 'MYR', 'food', 'McDonald''s',
-     '2026-03-18', now(), now())
+6. Zero-Knowledge Layer
+   → Encrypt merchant, category, notes with ADK (AES-256-GCM)
+   → Encrypt amount with ADK (AES-SIV — filterable)
+   → date stored as-is (platform metadata, not business content — configurable)
 
-7. After-Rules
-   weekend_entertainment_flag: category != 'entertainment' → skip
+7. Database Write
+   → INSERT INTO expenses (app_id, id, amount_enc, merchant_enc, ...) VALUES (...)
+   → Transaction committed
 
-8. Response → AI Agent
-   { id: "abc-123", amount: 45.00, currency: "MYR", ... }
+8. Audit Log
+   → { token: "eyJ...", tool: "create_expense", result: "success", timestamp: "..." }
+   → Encrypted with ADK, written to audit table
+
+9. Response → AI Agent
+   → { success: true, id: "exp-047", created_at: "2026-03-18T12:34:56Z" }
 ```
 
-**What if the AI tries to delete it?**
+### Unauthorized Agent
 
 ```
-1. AI Agent → MCP Server
-   Tool call: delete_expense({ id: "abc-123" })
+1. Unknown Agent → MCP Endpoint (mcp.ezyforge.io/app/abc-123)
+   Token: invalid-or-expired
 
-2. Tool not found — delete_expense was never generated
-   because ai_permissions.delete: false.
+2. Multi-Tenant App Router
+   → Token validation fails
 
-3. Response → AI Agent
-   { error: "unknown_tool", message: "No tool named delete_expense" }
+3. Response: { error: "unauthorized", status: 401 }
+   → No app context loaded, no ADK touched, no audit entry (nothing to audit)
 ```
 
----
+### AI Tries to Delete (Tool Does Not Exist)
 
-## Schema Format
+```
+1. AI Agent → MCP Endpoint
+   Tool: delete_expense   ← this tool was never generated
 
-The canonical EzyForge schema (annotated):
+2. MCP Endpoint
+   → Tool "delete_expense" not found in tool registry
 
-```yaml
-# ─── Metadata ──────────────────────────────────
-app: personal-expenses        # machine-readable app name
-version: "1.0.0"              # semver — tracked for migrations
-locked: true                  # when true, schema cannot be modified
+3. Response: { error: "tool_not_found", message: "No tool named 'delete_expense'" }
+   → The AI has no delete capability. It cannot be tricked into deleting
+     because the delete operation does not exist at the tool level.
+```
 
-metadata:
-  name: "Personal Expenses"
-  owner: jazz@example.com
+### AI Tries to Update a Restricted Field
 
-# ─── Storage ───────────────────────────────────
-storage:
-  engine: sqlite              # sqlite | postgres
-  path: ./data/expenses.db    # file path (sqlite) or connection string (postgres)
+```
+1. AI Agent → MCP Endpoint
+   Tool: update_expense
+   Params: { id: "exp-047", amount: 0 }
 
-# ─── Entities ──────────────────────────────────
-entities:
-  expense:
-    table: expenses           # database table name
+2. Permission Layer
+   → Role: ai
+   → Operation: update on expense entity
+   → Field check: "amount" NOT IN allowed_fields ["notes", "category"]
 
-    # ── Fields ─────────────────────────────────
-    fields:
-      id:
-        type: uuid
-        generated: true       # system-managed, not user-supplied
-        primary_key: true
-      amount:
-        type: decimal
-        required: true
-        min: 0.01
-        max: 999999.99
-        precision: 2
-      currency:
-        type: enum
-        values: [MYR, SGD, USD]
-        default: MYR
-      category:
-        type: enum
-        values: [food, transport, entertainment, utilities, other]
-      merchant:
-        type: string
-        required: true
-        max_length: 100
-      date:
-        type: date
-        required: true
-      notes:
-        type: string
-        optional: true
-      created_at:
-        type: datetime
-        generated: true
-        auto: now              # set automatically on create
-
-    # ── Business Rules ─────────────────────────
-    rules:
-      - name: no_future_dates
-        when: before_create, before_update
-        condition: "date <= today()"
-        error: "Expense date cannot be in the future"
-
-      - name: reasonable_amount
-        when: before_create
-        condition: "amount <= 50000"
-        error: "Expense over 50,000 requires manual review"
-        action: require_approval
-
-    # ── AI Permissions ─────────────────────────
-    ai_permissions:
-      create: true             # AI can create expenses
-      read: true               # AI can query expenses
-      update:
-        allowed_fields: [notes, category]  # AI can ONLY update these
-      delete: false            # AI cannot delete — ever
-      can_change_schema: false # AI cannot modify the schema
+3. Response: { error: "permission_denied", field: "amount",
+               message: "AI role cannot update field 'amount'" }
 ```
 
 ---
 
-## Extension Points
+## Infrastructure
 
-### Any LLM (Claude, GPT, Gemini)
+### Cloud Stack
 
-EzyForge is LLM-agnostic. It generates standard JSON Schema tool definitions that work with:
-- **MCP** (Anthropic Claude, OpenClaw, any MCP client)
-- **OpenAI Function Calling** (GPT-4, GPT-4o)
-- **Google Gemini Function Calling** (same JSON Schema format)
-- **Any framework** that accepts JSON Schema tool definitions
+| Component | Technology | Why |
+|-----------|-----------|-----|
+| Dashboard + Marketing | Vercel (Next.js) | Fast deploys, edge CDN, zero-config |
+| Engine + MCP Endpoints | Railway or Fly.io | Always-on containers, low-latency, scalable |
+| Database | Postgres (Neon or Supabase managed) | Managed, connection pooling, reliable |
+| Auth | Clerk or Auth.js | Proven auth with OAuth, JWT sessions |
+| Encryption | AES-256-GCM + AES-SIV | GCM for sensitive (random), SIV for filterable (deterministic) |
+| Key Derivation | Argon2 or PBKDF2 | Industry-standard password-to-key derivation |
+| MCP Transport | HTTP (streamable) | Standard MCP transport, works with all major AI platforms |
+| Monorepo | Turborepo + pnpm | Fast builds, shared packages, single repo |
+| Monitoring | Platform-level metrics only | Request counts, latency, error rates — no user data access |
 
-The AI never talks to EzyForge directly — it calls tools. EzyForge doesn't care which model generated the call.
+### Multi-Tenant Isolation
 
-### Any AI Agent Framework (OpenClaw, LangChain, CrewAI)
-
-EzyForge exposes tools via:
-- **MCP Server** — native integration for MCP-compatible frameworks
-- **REST API** — universal HTTP interface for any framework
-- **Programmatic SDK** — `import { createRuntime } from 'ezybusiness'` for embedded use
-
-Frameworks route tool calls to EzyForge. EzyForge handles validation, rules, permissions, and storage. The framework handles conversation, reasoning, and tool selection.
-
-### Any Database (SQLite, Postgres)
-
-The data layer is an adapter interface:
-- **SQLite** — zero-config, file-based, ideal for personal tools and development
-- **PostgreSQL** — production-grade, concurrent connections, native types
-
-The adapter interface is clean enough that community contributors could add MySQL, CockroachDB, or other backends.
+- **Database level:** All queries include `WHERE app_id = ?`. No query can omit the app_id scope.
+- **Encryption level:** Each app has its own App Data Key. Even if database isolation fails, data from app A is encrypted with a different key than app B. Cross-app reads yield ciphertext that cannot be decrypted.
+- **Token level:** Tokens are scoped to a single app. A token for app A cannot authenticate against app B.
+- **Rate limiting:** Per-app and per-token rate limits prevent one app from affecting platform performance for others.
+- **Schema isolation:** Each app has its own schema, tool set, and rule configuration. No sharing between apps.
 
 ---
 
 ## What EzyForge Is NOT
 
-- **Not a database.** It sits above your database and enforces rules on the way in.
-- **Not an AI model.** It doesn't generate text, reason, or make decisions. It generates and enforces tools.
-- **Not an application framework.** It doesn't render UI, handle routing, or manage sessions.
-- **Not a prompt engineering tool.** Rules live in the schema, not in prompts.
-- **Not a general-purpose rules engine.** It's specifically designed for the AI-to-database path.
-- **Not a replacement for Prisma/Supabase.** It complements them — Prisma defines the schema for your app code, EzyForge defines what AI can do with it.
-- **Not multi-tenant SaaS (yet).** MVP is single-user, local-first.
+1. **Not an AI model.** EzyForge is the boundary between AI and data. We never become the AI itself — that creates the conflict of interest we exist to solve.
+2. **Not a general-purpose database.** We enforce rules on writes and generate tools. Storage is pluggable. We are not competing with Supabase or PlanetScale.
+3. **Not a prompt engineering tool.** We do not validate AI output or filter AI responses. Rules live in the data layer, enforced deterministically, not in prompts.
+4. **Not self-hosted.** The cloud platform is the product. We will not maintain two deployment models. The CLI is a helper, not an alternative.
+5. **Not a platform that can read your data.** Zero-knowledge is architectural, not contractual. No backdoors, no admin panels, no support tools that access plaintext.
+6. **Not a dashboard-first product.** The AI agent is the primary interface. The dashboard is secondary — for admin, config, and governance. If you are using the dashboard for daily operations, you are using EzyForge wrong.
