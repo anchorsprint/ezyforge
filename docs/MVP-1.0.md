@@ -27,10 +27,10 @@ A cloud platform where a user connects their AI agent to a schema-enforced busin
 
 | Feature | Description | Done when |
 |---|---|---|
-| **Sign up / Login** | Email + password or OAuth (Google) | User can create account and log in |
+| **Sign up / Login** | Email OTP (passwordless) | User enters email → receives code → logged in |
 | **Account dashboard** | List of user's apps | User sees all their apps after login |
 
-Tech: Clerk or Supabase Auth
+Tech: Supabase Auth (email OTP built-in) — no passwords, no OAuth
 
 ---
 
@@ -201,7 +201,7 @@ MVP 1.0 passes when Jazz can do ALL of this:
 | Layer | Tech |
 |---|---|
 | **Frontend** | Next.js 15 + Tailwind + shadcn |
-| **Auth** | Clerk |
+| **Auth** | Supabase Auth (email OTP) |
 | **Platform API** | Hono (on Node.js) |
 | **Engine** | TypeScript (parser, rules, permissions, tools) |
 | **MCP Server** | @modelcontextprotocol/sdk |
@@ -224,7 +224,7 @@ Week 1: Engine core
 └── Postgres adapter (auto-create tables)
 
 Week 2: Cloud platform
-├── Auth (Clerk)
+├── Auth (Supabase email OTP)
 ├── App creation from template
 ├── Token management (create, revoke)
 ├── MCP server hosting (per app)
