@@ -12,8 +12,10 @@
 ## The MVP Flow (6 steps)
 
 ```
-Step 1: Agent creates account
-        Agent calls EzyForge API → account created → API key returned
+Step 1: Agent creates account (multi-turn with owner)
+        Agent asks owner for email → calls EzyForge → OTP sent to email
+        → owner reads OTP from email and shares it with agent
+        → agent verifies OTP → account created → API key returned
 
 Step 2: Agent inits app from template
         Agent calls API with template name → schema provisioned
@@ -48,14 +50,25 @@ Step 6: Owner monitors
 
 ## Features (only what's needed for this flow)
 
-### 1. Account Management (API-first)
+### 1. Account Management (Multi-turn API)
 
 | Feature | Description |
 |---|---|
-| Create account via API | Agent sends email → EzyForge sends OTP → agent relays code → account created |
-| API key management | Account gets an API key for agent to manage apps |
+| Initiate account | Agent calls `POST /api/auth/initiate { email }` → EzyForge sends OTP to owner's email |
+| Verify OTP | Owner reads OTP from email, shares it with agent → agent calls `POST /api/auth/verify { email, otp }` → account + API key returned |
+| API key | Agent stores API key for subsequent operations (init app, list templates, etc.) |
 
-No web signup form. Agent initiates everything.
+Multi-turn flow — owner must consciously share the OTP with the agent. This IS the trust establishment.
+
+**Example conversation:**
+```
+Jazz:  "Create me an expenses app on EzyForge"
+Agent: "What email should I use for your account?"
+Jazz:  "jazz@anchorsprint.com"
+Agent: "Sent a verification code to that email. What's the code?"
+Jazz:  "847291"
+Agent: "Account created! Setting up your expenses app now..."
+```
 
 ---
 
@@ -170,20 +183,21 @@ MVP 1.0 passes when Jazz does this end-to-end:
 
 ```
 1. ✅ Jazz tells OpenClaw: "Create me an expenses app on EzyForge"
-2. ✅ OpenClaw calls EzyForge API → account created → app initiated from expenses template
-3. ✅ Jazz receives email: "Review your new app — Personal Expenses"
-4. ✅ Jazz opens link → sees schema (expense entity, rules, AI permissions)
-5. ✅ Jazz clicks [Approve & Publish]
-6. ✅ OpenClaw receives MCP endpoint + token → connects
-7. ✅ "Log lunch at McDonald's RM 15" → expense created
-8. ✅ "How much did I spend on food?" → correct sum returned
-9. ✅ "Delete that expense" → refused (no tool)
-10. ✅ "Change the amount to 0" → rejected (not in allowed_fields)
-11. ✅ "Log dinner for next Friday" → rejected (future date rule)
-12. ✅ Jazz opens ezyforge.io → sees expenses + AI activity log
+2. ✅ OpenClaw asks for email → Jazz provides → OTP sent → Jazz shares code → account created
+3. ✅ OpenClaw inits app from expenses template
+4. ✅ Jazz receives email: "Review your new app — Personal Expenses"
+5. ✅ Jazz opens link → sees schema (expense entity, rules, AI permissions)
+6. ✅ Jazz clicks [Approve & Publish]
+7. ✅ OpenClaw receives MCP endpoint + token → connects
+8. ✅ "Log lunch at McDonald's RM 15" → expense created
+9. ✅ "How much did I spend on food?" → correct sum returned
+10. ✅ "Delete that expense" → refused (no tool)
+11. ✅ "Change the amount to 0" → rejected (not in allowed_fields)
+12. ✅ "Log dinner for next Friday" → rejected (future date rule)
+13. ✅ Jazz opens ezyforge.io → sees expenses + AI activity log
 ```
 
-12 steps. All must pass.
+13 steps. All must pass.
 
 ---
 
@@ -239,4 +253,4 @@ Week 4: Dogfood + fix
 
 ---
 
-*MVP 1.0 — agent sets it up, owner approves, agent operates. 4 weeks. 12-step validation.*
+*MVP 1.0 — agent sets it up, owner approves, agent operates. 4 weeks. 13-step validation.*
