@@ -1,17 +1,26 @@
 import pg from "pg";
-import { config } from "../config.js";
 
-export const pool = new pg.Pool({
-  connectionString: config.databaseUrl,
-  max: 20,
-});
+let _pool: pg.Pool | null = null;
+
+/** Lazy pool — only connects on first use */
+function getPool(): pg.Pool {
+  if (!_pool) {
+    _pool = new pg.Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 20,
+    });
+  }
+  return _pool;
+}
+
+export { getPool as pool };
 
 /** Run a parameterized query and return rows. */
 export async function query<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const result = await pool.query(sql, params);
+  const result = await getPool().query(sql, params);
   return result.rows as T[];
 }
 
@@ -38,4 +47,14 @@ export async function queryOneOrThrow<T = Record<string, unknown>>(
     throw err;
   }
   return row;
+}
+
+/** Health check — test DB connection */
+export async function checkConnection(): Promise<boolean> {
+  try {
+    await getPool().query("SELECT 1");
+    return true;
+  } catch {
+    return false;
+  }
 }

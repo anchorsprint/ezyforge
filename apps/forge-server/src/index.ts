@@ -7,26 +7,26 @@ import { authRoutes } from "./routes/auth.js";
 import { appRoutes } from "./routes/apps.js";
 import { templateRoutes } from "./routes/templates.js";
 import { tokenRoutes } from "./routes/tokens.js";
-import { dataRoutes } from "./routes/data.js";
-import { activityRoutes } from "./routes/data.js";
-import { handleMcpRequest } from "./mcp/handler.js";
-
-// ---------------------------------------------------------------------------
-// Hono app (API routes only — MCP handled at Node level)
-// ---------------------------------------------------------------------------
+import { dataRoutes, activityRoutes } from "./routes/data.js";
+import { checkConnection } from "./db/pool.js";
 
 const app = new Hono();
 
 app.onError(errorHandler);
+app.use("/api/*", cors({ origin: config.consoleUrl, credentials: true }));
 
-app.use(
-  "/api/*",
-  cors({ origin: config.consoleUrl, credentials: true }),
+// Health check (no DB needed)
+app.get("/health", (c) =>
+  c.json({ ok: true, service: "forge-server", timestamp: new Date().toISOString() })
 );
 
-app.get("/health", (c) => c.json({ ok: true, service: "forge-server" }));
+// Health check with DB
+app.get("/health/db", async (c) => {
+  const dbOk = await checkConnection();
+  return c.json({ ok: dbOk, service: "forge-server", db: dbOk ? "connected" : "unreachable" }, dbOk ? 200 : 503);
+});
 
-// API routes.
+// API routes
 app.route("/api/auth", authRoutes);
 app.route("/api/apps", appRoutes);
 app.route("/api/templates", templateRoutes);
@@ -34,40 +34,19 @@ app.route("/api/apps/:appId/tokens", tokenRoutes);
 app.route("/api/apps/:appId/data", dataRoutes);
 app.route("/api/apps/:appId/activity", activityRoutes);
 
-// ---------------------------------------------------------------------------
-// Start Node.js HTTP server
-// ---------------------------------------------------------------------------
-
-const server = serve(
-  {
-    fetch: app.fetch,
-    port: config.port,
-  },
-  (info) => {
-    console.log(`forge-server listening on :${info.port}`);
-  },
-);
-
-// Intercept requests at the Node level for MCP (needs raw req/res).
-const originalHandler = server.listeners("request")[0] as Function;
-server.removeAllListeners("request");
-server.on("request", async (req, res) => {
-  const url = req.url ?? "";
-  const mcpMatch = url.match(/^\/mcp\/([0-9a-f-]{36})$/);
-
-  if (mcpMatch && req.method === "POST") {
-    try {
-      await handleMcpRequest(req, res, mcpMatch[1]);
-    } catch (err) {
-      console.error("MCP handler error:", err);
-      if (!res.headersSent) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "internal", message: "MCP handler failed" }));
-      }
-    }
-    return;
-  }
-
-  // All other requests go through Hono.
-  originalHandler(req, res);
+// MCP endpoint placeholder (will add full MCP handler in next iteration)
+app.post("/mcp/:appId", async (c) => {
+  const appId = c.req.param("appId");
+  return c.json({ error: "mcp_not_ready", message: `MCP endpoint for app ${appId} — coming soon` }, 501);
 });
+
+// Start server
+serve(
+  { fetch: app.fetch, port: config.port, hostname: "0.0.0.0" },
+  (info) => {
+    console.log(`forge-server listening on http://0.0.0.0:${info.port}`);
+    console.log(`  Health:    http://localhost:${info.port}/health`);
+    console.log(`  API:       http://localhost:${info.port}/api/`);
+    console.log(`  MCP:       http://localhost:${info.port}/mcp/:appId`);
+  }
+);
