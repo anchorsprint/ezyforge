@@ -1,6 +1,7 @@
 # EzyForge — Business Schema Object Model
 
-> A complete business app defined in YAML. No code. No UI. 10 objects.
+> A complete business app defined in YAML. No code. No UI. Business logic only.
+> Schema defines what the business does, not what the screen looks like.
 
 ---
 
@@ -143,6 +144,132 @@ notifications:
 
 ---
 
+---
+
+## Design Principle: Business Logic Only
+
+The schema defines **what the business does**, not UI concerns.
+
+**IN scope (business logic):**
+- Entities, fields, types, constraints
+- Business rules and validation
+- Permissions and access control
+- Queries and aggregations
+- Business operations
+- State machines
+- Computed values
+- Automated triggers
+
+**OUT of scope (UI/storage concerns):**
+- Multi-select / tag widgets → model as a separate entity with relationship
+- File uploads / attachments → handled by platform storage, not schema
+- Form layouts / field ordering → not business logic
+- Drag-and-drop / sorting → UI concern
+- Color coding / icons → UI concern
+
+---
+
+## System Entities (provided by platform)
+
+Every app gets these automatically. The business owner never defines them. They just exist.
+
+```yaml
+# These are NOT in the user's schema — EzyForge provides them for every app.
+
+system_entities:
+
+  _audit_log:
+    description: "Every data operation recorded automatically"
+    fields:
+      id:          { type: uuid, generated: true }
+      timestamp:   { type: datetime, auto: now }
+      actor:       { type: string }          # token ID or "owner" or "system"
+      actor_role:  { type: enum, values: [owner, ai, system] }
+      entity:      { type: string }          # which entity was affected
+      record_id:   { type: uuid }            # which record
+      operation:   { type: enum, values: [create, read, update, delete] }
+      fields_changed: { type: text }         # JSON of what changed
+      old_values:  { type: text }            # JSON of previous values
+      new_values:  { type: text }            # JSON of new values
+      status:      { type: enum, values: [success, rejected, error] }
+      rejection_reason: { type: text }       # rule name + error if rejected
+    notes: "Immutable. AI cannot modify or delete audit records."
+
+  _access_log:
+    description: "Every API/MCP connection and tool discovery"
+    fields:
+      id:          { type: uuid, generated: true }
+      timestamp:   { type: datetime, auto: now }
+      token_id:    { type: uuid }
+      ip_address:  { type: string }
+      action:      { type: enum, values: [connect, discover_tools, disconnect] }
+      user_agent:  { type: string }
+    notes: "Tracks who connected, when, from where."
+
+  _schema_history:
+    description: "Every schema version stored"
+    fields:
+      id:          { type: uuid, generated: true }
+      version:     { type: string }          # semver
+      schema_yaml: { type: text }            # full YAML snapshot
+      changed_by:  { type: enum, values: [owner, ai_proposal] }
+      change_summary: { type: text }
+      created_at:  { type: datetime, auto: now }
+    notes: "Immutable. Complete schema history for rollback."
+
+  _proposals:
+    description: "AI-proposed schema changes awaiting approval"
+    fields:
+      id:          { type: uuid, generated: true }
+      proposed_by: { type: uuid }            # token ID
+      changes:     { type: text }            # JSON of proposed changes
+      reason:      { type: text }
+      status:      { type: enum, values: [pending, approved, rejected] }
+      reviewed_at: { type: datetime }
+      created_at:  { type: datetime, auto: now }
+
+  _tokens:
+    description: "API/MCP tokens and their permissions"
+    fields:
+      id:          { type: uuid, generated: true }
+      name:        { type: string }          # "OpenClaw", "Claude Desktop"
+      role:        { type: enum, values: [owner, ai] }
+      token_hash:  { type: string }          # hashed, never stored plain
+      last_used:   { type: datetime }
+      active:      { type: boolean, default: true }
+      created_at:  { type: datetime, auto: now }
+      revoked_at:  { type: datetime }
+    notes: "First token auto-created on publish. Additional tokens via console."
+
+  _app_meta:
+    description: "App configuration and status"
+    fields:
+      id:          { type: uuid, generated: true }
+      name:        { type: string }
+      template:    { type: string }
+      status:      { type: enum, values: [draft, published, locked, suspended] }
+      schema_version: { type: string }
+      owner_email: { type: string }
+      created_at:  { type: datetime, auto: now }
+      published_at: { type: datetime }
+      locked_at:   { type: datetime }
+```
+
+### What System Entities Give You for Free
+
+| System Entity | What it does | Business owner action needed |
+|---|---|---|
+| `_audit_log` | Records every create/update/delete with old/new values | None — automatic |
+| `_access_log` | Records every connection and tool discovery | None — automatic |
+| `_schema_history` | Stores every schema version for rollback | None — automatic |
+| `_proposals` | Manages AI schema change proposals | Owner reviews in console |
+| `_tokens` | Manages API/MCP tokens | Owner manages in console |
+| `_app_meta` | App status, config, deployment info | None — automatic |
+
+**The business owner writes ZERO lines for audit, access logging, schema history, or token management.** It all comes free with every app.
+
+---
+
 ## MVP Priority
 
 | Object | P1 (MVP) | P2 | P3 |
@@ -151,6 +278,7 @@ notifications:
 | Rules | ✅ | | |
 | Permissions | ✅ | | |
 | Views | ✅ | | |
+| System Entities | ✅ | | |
 | Relationships | | ✅ | |
 | Computed | | ✅ | |
 | Actions | | ✅ | |
