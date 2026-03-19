@@ -1,0 +1,43 @@
+app:
+  name: expenses
+  version: "1.0"
+
+entities:
+  expense:
+    fields:
+      id: auto
+      amount: decimal, req
+      category: "enum(food, transport, entertainment, utilities, other), req"
+      description: str
+      date: date, req
+      notes: str
+      created_at: datetime, auto
+
+permissions:
+  owner:
+    expense:
+      create: true
+      read: true
+      update: true
+      delete: true
+  ai:
+    expense:
+      create: true
+      read: true
+      update:
+        allowed: true
+        fields:
+          - notes
+          - category
+      delete: false
+
+rules:
+  no_future_dates:
+    entity: expense
+    when: create, update
+    condition: "date > today()"
+    action: reject
+    message: "Expense date cannot be in the future"
+
+functions:
+  auto: true
