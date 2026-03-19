@@ -25,16 +25,24 @@ Step 3: Owner reviews & approves
         → clicks [Approve & Publish]
 
 Step 4: App is live
-        Schema locked → MCP endpoint active → AI token issued
+        Schema locked → MCP endpoint active
+        → first AI token auto-issued to the onboarding agent
 
 Step 5: Agent operates the app
-        Agent connects via MCP → discovers tools
+        Agent connects via MCP using its token → discovers tools
         → creates records, queries data, updates allowed fields
         → rules enforced, permissions checked on every operation
 
 Step 6: Owner monitors
-        Owner can view data + AI activity via simple web page
+        Owner can view data + AI activity via web portal
+        → can create additional AI tokens from portal (not via API)
+        → can revoke any token from portal
 ```
+
+**Token model:**
+- **First agent token:** auto-created during onboarding → given to the agent that set up the app. Zero friction.
+- **Additional agent tokens:** must be created by owner via web portal. Owner controls who else gets access.
+- **Revocation:** any token can be revoked from portal at any time.
 
 ---
 
@@ -130,9 +138,10 @@ Expressions in 1.0: `<`, `<=`, `>`, `>=`, `==`, `!=`, `AND`, `OR`, `NOT`, `today
 |---|---|
 | Data viewer | Simple table showing records |
 | AI activity log | Every MCP call: tool, input, result, timestamp |
+| Token management | Create new AI tokens, view active tokens, revoke tokens |
 | Auth | Email OTP (same as approval flow) |
 
-No schema editor. No token management UI. No dashboard charts. Just: see your data + see what AI did.
+No schema editor. No dashboard charts. Just: see your data, see what AI did, manage who has access.
 
 ---
 
@@ -142,7 +151,7 @@ No schema editor. No token management UI. No dashboard charts. Just: see your da
 |---|---|---|
 | Web signup / onboarding UI | Agent handles signup | 1.1 |
 | Schema editor | Templates only in 1.0, no custom schemas yet | 1.1 |
-| Token management UI | One token auto-generated on publish | 1.1 |
+| Token creation via API (after first) | Additional tokens must be created from portal for security | By design |
 | REST API | MCP is enough for 1.0 | 1.1 |
 | Multiple templates | Expenses only | 1.1 |
 | Custom roles | Owner + AI only | 1.1 |
