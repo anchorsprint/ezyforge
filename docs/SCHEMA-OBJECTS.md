@@ -1,272 +1,219 @@
 # EzyForge — Business Schema Object Model
 
-> A complete business app defined in YAML. No code. No UI. Business logic only.
-> Schema defines what the business does, not what the screen looks like.
+> Schema defines business logic. Functions are the only AI interface.
+> Everything else is internal implementation.
 
 ---
 
-## The 10 Schema Objects
+## Architecture
 
-### 1. Entities — the nouns
-What the business tracks. Tables with typed fields and constraints.
+```
+┌─────────────────────────────────────┐
+│         YAML Schema                  │
+│                                      │
+│  Internal (business owner defines):  │
+│    entities    rules    permissions   │
+│    computed    automations            │
+│                                      │
+│  External (AI calls):                │
+│    functions ← THE ONLY MCP tools    │
+│                                      │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│         MCP Tools                    │
+│                                      │
+│  log_expense()                       │
+│  show_this_month()                   │
+│  mark_reimbursed()                   │
+│  budget_status()                     │
+│                                      │
+│  AI sees ONLY functions.             │
+│  No entities. No CRUD. No SQL.       │
+└─────────────────────────────────────┘
+```
 
+---
+
+## Schema Objects
+
+### Internal Objects (business logic, AI never sees these directly)
+
+**1. Entities** — what data exists
 ```yaml
 entities:
   expense:
     fields:
-      id:       { type: uuid, generated: true }
-      amount:   { type: decimal, required: true, min: 0.01 }
-      merchant: { type: string, required: true, max_length: 100 }
+      id:       { uuid, auto }
+      amount:   { decimal, req, min: 0.01 }
+      merchant: { str, req, max: 100 }
 ```
 
-### 2. Relationships — how nouns connect
-Foreign keys, ownership, and cardinality.
-
-```yaml
-relationships:
-  invoice:
-    belongs_to: customer
-    has_many: line_items
-```
-
-### 3. Rules — what's valid
-Deterministic constraints enforced on every write. Before/after hooks.
-
+**2. Rules** — what's valid
 ```yaml
 rules:
-  - name: no_future_dates
-    entity: expense
-    when: before_create, before_update
-    condition: "date <= today()"
-    error: "Date cannot be in the future"
+  - no_future_dates: { on: expense, when: create|update, if: "date <= today()", err: "No future dates" }
 ```
 
-### 4. Permissions — who can do what
-CRUD + field-level access per role.
-
+**3. Permissions** — who can do what (enforced per function)
 ```yaml
 permissions:
   ai:
-    expense: { create: true, read: true, update: [notes, category], delete: false }
+    expense: { c: true, r: true, u: [notes, category], d: false }
   owner:
-    expense: { create: true, read: true, update: all, delete: true }
+    expense: { c, r, u, d }
 ```
 
-### 5. Views — how to see data
-Named queries with business meaning. Each generates an MCP tool.
-
-```yaml
-views:
-  this_month_spending:
-    entity: expense
-    filter: "date >= start_of_month()"
-    group_by: category
-    aggregate: { field: amount, function: sum }
-```
-
-### 6. Actions — what you can DO
-Business operations beyond CRUD. Multi-step, validated, atomic.
-
-```yaml
-actions:
-  close_month:
-    description: "Lock all expenses for the month"
-    input: { month: { type: string, required: true } }
-    steps:
-      - validate: "all expenses in month have category"
-      - update: { entity: expense, filter: "month(date) == $month", set: { locked: true } }
-      - return: { view: this_month_spending }
-    allowed_roles: [owner]
-```
-
-### 7. Workflows — lifecycle of things
-State machines with valid transitions and role-based triggers.
-
-```yaml
-workflows:
-  invoice_lifecycle:
-    entity: invoice
-    field: status
-    states: [draft, sent, paid, cancelled]
-    transitions:
-      - from: draft  to: sent   by: [owner, ai]
-      - from: sent   to: paid   by: [owner, ai]
-      - from: sent   to: cancelled by: [owner]
-```
-
-### 8. Computed — derived values
-Auto-calculated fields with dependency tracking.
-
+**4. Computed** — derived values
 ```yaml
 computed:
-  invoice:
-    subtotal: "sum(line_items.total)"
-    tax: "subtotal * 0.06"
-    grand_total: "subtotal + tax"
+  budget:
+    spent: "sum(expense, category == self.category AND date >= som(), amount)"
+    remaining: "limit - spent"
 ```
 
-### 9. Automations — when X happens, do Y
-Event-driven triggers. Reactive, not polling.
-
+**5. Automations** — when X happens, do Y
 ```yaml
 automations:
-  flag_big_expense:
-    trigger: "expense.created AND expense.amount > 5000"
-    action: tag
-    config: { tag: "needs-review" }
+  budget_warning: { on: expense.created, if: "budget.pct_used >= 80", notify: "⚠️ {category} at {pct_used}%" }
 ```
 
-### 10. Notifications — how to alert
-Channels and templates for system communication.
+---
+
+### External Object (the ONLY thing AI touches)
+
+**6. Functions** — what AI can call via MCP
+
+Functions are the **sole interface** between AI and the business app. Each function becomes one MCP tool. AI never sees entities, rules, or permissions directly — only functions.
 
 ```yaml
-notifications:
-  channels:
-    owner: { type: webhook, url: "$WEBHOOK_URL" }
-  templates:
-    big_expense:
-      message: "Large expense: {amount} at {merchant}"
+functions:
+
+  # Auto-generate basic CRUD functions from entities + permissions
+  auto: true
+
+  # Custom functions (override auto or add new)
+  custom:
+    log_expense:
+      desc: "Record a new expense"
+      input:
+        amount:   { decimal, req }
+        currency: { enum: [MYR, SGD, USD], default: MYR }
+        category: { enum: [food, transport, housing, ...], req }
+        merchant: { str, req }
+        date:     { date, req }
+        notes:    { text }
+        payment:  { enum: [cash, card, e_wallet, transfer] }
+      does: create(expense)
+
+    show_this_month:
+      desc: "Spending breakdown for current month"
+      does: query(expense, filter: "date >= som()", group: category, agg: sum(amount))
+
+    mark_reimbursed:
+      desc: "Mark an expense as reimbursed"
+      input:
+        id:            { uuid, req }
+        reimbursed_by: { str, req }
+      does:
+        - update(expense, id: $id, set: { reimbursed: true, reimbursed_by: $reimbursed_by })
+
+    budget_status:
+      desc: "Show all budgets with current spend"
+      does: query(budget, include: [spent, remaining, pct_used])
 ```
 
----
+### How `auto: true` works
 
-## How Objects Map to MCP Tools
+When `auto: true`, EzyForge generates default functions from entities + permissions:
 
-| Object | Tools Generated |
-|---|---|
-| Entity | `create_X`, `get_X`, `list_X`, `update_X` (per permissions) |
-| View | `get_[view_name]()` — no params needed |
-| Action | `[action_name]({ inputs })` — validated, multi-step |
-| Workflow | `transition_X({ id, to_state })` — enforced transitions |
-| Computed | Included in entity read responses — not separate tools |
-| Automations | No tools — runs automatically on triggers |
-| Notifications | No tools — triggered by automations or actions |
-
----
-
----
-
-## Design Principle: Business Logic Only
-
-The schema defines **what the business does**, not UI concerns.
-
-**IN scope (business logic):**
-- Entities, fields, types, constraints
-- Business rules and validation
-- Permissions and access control
-- Queries and aggregations
-- Business operations
-- State machines
-- Computed values
-- Automated triggers
-
-**OUT of scope (UI/storage concerns):**
-- Multi-select / tag widgets → model as a separate entity with relationship
-- File uploads / attachments → handled by platform storage, not schema
-- Form layouts / field ordering → not business logic
-- Drag-and-drop / sorting → UI concern
-- Color coding / icons → UI concern
-
----
-
-## System Entities (provided by platform)
-
-Every app gets these automatically. The business owner never defines them. They just exist.
-
-```yaml
-# These are NOT in the user's schema — EzyForge provides them for every app.
-
-system_entities:
-
-  _audit_log:
-    description: "Every data operation recorded automatically"
-    fields:
-      id:          { type: uuid, generated: true }
-      timestamp:   { type: datetime, auto: now }
-      actor:       { type: string }          # token ID or "owner" or "system"
-      actor_role:  { type: enum, values: [owner, ai, system] }
-      entity:      { type: string }          # which entity was affected
-      record_id:   { type: uuid }            # which record
-      operation:   { type: enum, values: [create, read, update, delete] }
-      fields_changed: { type: text }         # JSON of what changed
-      old_values:  { type: text }            # JSON of previous values
-      new_values:  { type: text }            # JSON of new values
-      status:      { type: enum, values: [success, rejected, error] }
-      rejection_reason: { type: text }       # rule name + error if rejected
-    notes: "Immutable. AI cannot modify or delete audit records."
-
-  _access_log:
-    description: "Every API/MCP connection and tool discovery"
-    fields:
-      id:          { type: uuid, generated: true }
-      timestamp:   { type: datetime, auto: now }
-      token_id:    { type: uuid }
-      ip_address:  { type: string }
-      action:      { type: enum, values: [connect, discover_tools, disconnect] }
-      user_agent:  { type: string }
-    notes: "Tracks who connected, when, from where."
-
-  _schema_history:
-    description: "Every schema version stored"
-    fields:
-      id:          { type: uuid, generated: true }
-      version:     { type: string }          # semver
-      schema_yaml: { type: text }            # full YAML snapshot
-      changed_by:  { type: enum, values: [owner, ai_proposal] }
-      change_summary: { type: text }
-      created_at:  { type: datetime, auto: now }
-    notes: "Immutable. Complete schema history for rollback."
-
-  _proposals:
-    description: "AI-proposed schema changes awaiting approval"
-    fields:
-      id:          { type: uuid, generated: true }
-      proposed_by: { type: uuid }            # token ID
-      changes:     { type: text }            # JSON of proposed changes
-      reason:      { type: text }
-      status:      { type: enum, values: [pending, approved, rejected] }
-      reviewed_at: { type: datetime }
-      created_at:  { type: datetime, auto: now }
-
-  _tokens:
-    description: "API/MCP tokens and their permissions"
-    fields:
-      id:          { type: uuid, generated: true }
-      name:        { type: string }          # "OpenClaw", "Claude Desktop"
-      role:        { type: enum, values: [owner, ai] }
-      token_hash:  { type: string }          # hashed, never stored plain
-      last_used:   { type: datetime }
-      active:      { type: boolean, default: true }
-      created_at:  { type: datetime, auto: now }
-      revoked_at:  { type: datetime }
-    notes: "First token auto-created on publish. Additional tokens via console."
-
-  _app_meta:
-    description: "App configuration and status"
-    fields:
-      id:          { type: uuid, generated: true }
-      name:        { type: string }
-      template:    { type: string }
-      status:      { type: enum, values: [draft, published, locked, suspended] }
-      schema_version: { type: string }
-      owner_email: { type: string }
-      created_at:  { type: datetime, auto: now }
-      published_at: { type: datetime }
-      locked_at:   { type: datetime }
-```
-
-### What System Entities Give You for Free
-
-| System Entity | What it does | Business owner action needed |
+| Entity + Permission | Generated Function | Tool Name |
 |---|---|---|
-| `_audit_log` | Records every create/update/delete with old/new values | None — automatic |
-| `_access_log` | Records every connection and tool discovery | None — automatic |
-| `_schema_history` | Stores every schema version for rollback | None — automatic |
-| `_proposals` | Manages AI schema change proposals | Owner reviews in console |
-| `_tokens` | Manages API/MCP tokens | Owner manages in console |
-| `_app_meta` | App status, config, deployment info | None — automatic |
+| expense + create: true | Create an expense | `create_expense` |
+| expense + read: true | Get expense by ID | `get_expense` |
+| expense + read: true | List expenses with filters | `list_expenses` |
+| expense + update: [notes, category] | Update allowed fields | `update_expense` |
+| expense + delete: false | *(nothing generated)* | — |
 
-**The business owner writes ZERO lines for audit, access logging, schema history, or token management.** It all comes free with every app.
+Custom functions **override** auto-generated ones with the same entity. If you define `log_expense` with `does: create(expense)`, it replaces the auto-generated `create_expense`.
+
+### Function operations
+
+| Operation | What it does |
+|---|---|
+| `create(entity)` | Insert a new record |
+| `update(entity, id, set)` | Update fields on a record |
+| `delete(entity, id)` | Delete a record |
+| `query(entity, filter, sort, limit)` | Query with filters |
+| `query(entity, group, agg)` | Aggregate query |
+| `query(entity, include: [computed])` | Include computed fields |
+
+---
+
+## System Entities (provided by platform — zero config)
+
+Every app gets these automatically. Business owner never defines them.
+
+| System Entity | What it does | AI can access? |
+|---|---|---|
+| `_audit_log` | Every data operation with old/new values | Read only (via system function) |
+| `_access_log` | Every connection — who, when, from where | Console only |
+| `_schema_history` | Every schema version for rollback | Console only |
+| `_proposals` | AI schema change proposals | Via propose function |
+| `_tokens` | API/MCP token management | Console only |
+| `_app_meta` | App status and config | Console only |
+
+System functions (auto-provided, not in schema):
+
+```
+get_audit_log()      ← AI can review its own activity
+propose_change()     ← AI can propose schema changes
+get_schema()         ← AI can read current schema
+```
+
+---
+
+## Design Principles
+
+**1. Business logic only — no UI concerns**
+- No multi-select widgets, file uploads, form layouts
+- If you need tags → model as separate entity with relationship
+
+**2. Functions are the only AI interface**
+- AI never sees entities, SQL, or CRUD operations
+- Functions use business language: `log_expense` not `create_expense`
+- Each function = one MCP tool
+
+**3. Internal objects are invisible to AI**
+- Entities, rules, permissions → enforced silently
+- AI calls `log_expense` → engine checks permissions, validates, runs rules, writes to DB
+- AI only sees: success or structured error
+
+**4. Auto-generate + override**
+- `auto: true` gives sensible defaults
+- Custom functions override or extend
+- Business owner controls exactly what AI can do
+
+---
+
+## Short Syntax Reference
+
+| Verbose | Short |
+|---|---|
+| `type: string` | `str` |
+| `type: decimal` | `decimal` |
+| `type: boolean` | `bool` |
+| `type: integer` | `int` |
+| `type: text` | `text` |
+| `required: true` | `req` |
+| `generated: true, auto: now` | `auto` |
+| `max_length: 100` | `max: 100` |
+| `description` | `desc` |
+| `create: true, read: true, ...` | `c, r, u, d` |
+| `start_of_month()` | `som()` |
+| `sort: amount_desc` | `sort: -amount` |
+| `aggregate: sum` | `agg: sum(field)` |
 
 ---
 
@@ -277,11 +224,10 @@ system_entities:
 | Entities | ✅ | | |
 | Rules | ✅ | | |
 | Permissions | ✅ | | |
-| Views | ✅ | | |
-| System Entities | ✅ | | |
+| Functions (auto + custom) | ✅ | | |
+| System entities | ✅ | | |
 | Relationships | | ✅ | |
 | Computed | | ✅ | |
-| Actions | | ✅ | |
-| Workflows | | ✅ | |
+| Workflows (state machines) | | ✅ | |
 | Automations | | | ✅ |
 | Notifications | | | ✅ |
