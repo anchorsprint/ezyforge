@@ -1,156 +1,138 @@
-# EzyForge MVP 1.0 — Feature Scope
+# EzyForge MVP 1.0 — Refined Scope
 
-**Goal:** One user (Jazz) signs up, creates an expenses app from template, connects OpenClaw via MCP, and operates it daily. Everything works. Nothing breaks.
+**Goal:** A developer's AI agent can create an EzyForge account, init an app from a template, publish it with owner approval, and then operate the app (save + query data) through MCP.
+
+**One sentence:** Agent sets it up. Owner approves. Agent operates it.
 
 **Timeline:** 4 weeks
 **Team:** 1-2 developers
 
 ---
 
-## What MVP 1.0 IS
+## The MVP Flow (6 steps)
 
-A cloud platform where a user connects their AI agent to a schema-enforced business app via MCP.
+```
+Step 1: Agent creates account
+        Agent calls EzyForge API → account created → API key returned
 
-## What MVP 1.0 IS NOT
+Step 2: Agent inits app from template
+        Agent calls API with template name → schema provisioned
+        → database created → MCP endpoint + tools ready (draft mode)
 
-- Not a CLI tool
-- Not self-hosted
-- Not multi-user/team
-- Not a marketplace
-- Not enterprise
+Step 3: Owner reviews & approves
+        Owner receives approval request (email OTP link)
+        → opens review page → sees schema, entities, rules, AI permissions
+        → clicks [Approve & Publish]
 
----
+Step 4: App is live
+        Schema locked → MCP endpoint active → AI token issued
 
-## Features
+Step 5: Agent operates the app
+        Agent connects via MCP → discovers tools
+        → creates records, queries data, updates allowed fields
+        → rules enforced, permissions checked on every operation
 
-### 1. Auth & Account
-
-| Feature | Description | Done when |
-|---|---|---|
-| **Sign up / Login** | Email OTP (passwordless) | User enters email → receives code → logged in |
-| **Account dashboard** | List of user's apps | User sees all their apps after login |
-
-Tech: Supabase Auth (email OTP built-in) — no passwords, no OAuth
-
----
-
-### 2. App Management
-
-| Feature | Description | Done when |
-|---|---|---|
-| **Create app from template** | User picks a template → app is provisioned | App has: schema, database, MCP endpoint, tokens |
-| **Templates: Expenses** | Pre-built personal expenses schema | Entities: expense (amount, currency, category, merchant, date, notes) + budget |
-| **App detail page** | Shows: MCP URL, API tokens, schema, status | User can copy MCP URL and token |
-| **Delete app** | User can delete their app and all data | Clean teardown |
+Step 6: Owner monitors
+        Owner can view data + AI activity via simple web page
+```
 
 ---
 
-### 3. Schema Engine (Core)
+## Features (only what's needed for this flow)
 
-| Feature | Description | Done when |
-|---|---|---|
-| **YAML parser + validator** | Parse schema, reject invalid schemas with clear errors | All field types, constraints, rules, permissions validated |
-| **Supported field types** | string, integer, decimal, boolean, date, datetime, uuid, enum, url, text | All types map correctly to Postgres columns |
-| **Field constraints** | required, optional, default, min, max, min_length, max_length, pattern, precision | Constraints enforced at validation and write time |
-| **Generated fields** | id (uuid), created_at, updated_at with auto values | Auto-populated, not user-supplied |
-| **Schema lock / unlock** | locked: true prevents schema modification | Locked schema rejects all change attempts |
+### 1. Account Management (API-first)
 
----
+| Feature | Description |
+|---|---|
+| Create account via API | Agent sends email → EzyForge sends OTP → agent relays code → account created |
+| API key management | Account gets an API key for agent to manage apps |
 
-### 4. Rule Engine
-
-| Feature | Description | Done when |
-|---|---|---|
-| **Lifecycle hooks** | before_create, before_update, after_create, after_update | Rules run at correct hook points |
-| **Condition evaluator** | FEEL-inspired: comparisons, AND/OR/NOT, today(), now() | `date <= today()` works correctly |
-| **Actions** | reject (block operation), warn (allow with warning) | Rule violation returns structured error |
-| **Unique constraints** | Single and composite field uniqueness | Duplicate detection works |
-
-Expressions supported in 1.0:
-- Comparisons: `<`, `<=`, `>`, `>=`, `==`, `!=`
-- Boolean: `AND`, `OR`, `NOT`
-- Functions: `today()`, `now()`
-- Null: `is null`, `is not null`
-
-NOT in 1.0: arithmetic, string functions, IN operator, cross-entity rules.
+No web signup form. Agent initiates everything.
 
 ---
 
-### 5. Permission Layer
+### 2. App Provisioning
 
-| Feature | Description | Done when |
-|---|---|---|
-| **AI permissions per entity** | create, read, update, delete: true/false | CRUD gating works |
-| **Field-level update restriction** | `update: { allowed_fields: [notes, category] }` | AI can only update listed fields |
-| **No tool generation for denied ops** | delete: false → no delete tool exists | AI literally cannot discover the operation |
-| **Two roles** | owner (full access), ai (restricted per schema) | Role determined by token type |
-
----
-
-### 6. AI Integration (MCP)
-
-| Feature | Description | Done when |
-|---|---|---|
-| **MCP server per app** | Always-on MCP endpoint | AI agent connects and discovers tools |
-| **Auto-generated tools from schema** | create, read, list, update (per permissions) | Tools match schema exactly |
-| **Tool descriptions from schema** | Field descriptions included in tool definitions | AI understands what each field means |
-| **List with filters** | Filter by field values, sort, pagination | `list_expenses({ category: "food", limit: 20 })` works |
-| **Aggregation tools** | sum, count, avg with group_by | `summarize_expenses({ aggregation: "sum", group_by: "category" })` works |
+| Feature | Description |
+|---|---|
+| Init app from template | `POST /api/apps { template: "expenses" }` → app created in draft mode |
+| Templates: Expenses | Pre-built schema: expense entity (amount, currency, category, merchant, date, notes) |
+| Draft mode | App exists but MCP is not active until owner approves |
 
 ---
 
-### 7. REST API
+### 3. Owner Approval Flow
 
-| Feature | Description | Done when |
-|---|---|---|
-| **CRUD endpoints per entity** | POST, GET, GET/:id, PATCH, DELETE | Standard REST operations |
-| **Same enforcement pipeline** | Permissions → validation → rules → DB | REST and MCP have identical enforcement |
-| **Token auth** | Bearer token in header | Scoped to app, role-aware |
+| Feature | Description |
+|---|---|
+| Approval notification | Email sent to owner with OTP link to review page |
+| Review page | Simple web page showing: schema summary, entities, fields, rules, AI permissions |
+| Approve & Publish | Owner clicks approve → schema locks → MCP goes live → AI token generated |
+| Reject | Owner rejects → app stays in draft, agent is notified |
 
----
-
-### 8. Token Management
-
-| Feature | Description | Done when |
-|---|---|---|
-| **Create AI token** | Scoped to one app, role = ai | Token enforces AI permissions |
-| **Create owner token** | Scoped to one app, role = owner | Full access |
-| **Revoke token** | Instantly disable a token | Revoked token gets rejected |
-| **View active tokens** | List all tokens for an app | User sees who has access |
+This is the ONLY web UI in MVP 1.0. One page. Approve or reject.
 
 ---
 
-### 9. Data Storage
+### 4. Schema Engine
 
-| Feature | Description | Done when |
-|---|---|---|
-| **Postgres per app** | Isolated database (Neon or Turso) | Each app's data is fully separated |
-| **Auto-create tables** | Tables created from schema on app creation | No manual SQL needed |
-| **Encrypted at rest** | Provider-managed encryption | Standard security |
+| Feature | Description |
+|---|---|
+| YAML parser | Parse template schema into validated object |
+| Field types | string, integer, decimal, boolean, date, datetime, uuid, enum |
+| Field constraints | required, default, min, max, min_length, max_length |
+| Business rules | before_create/before_update hooks with FEEL-like conditions |
+| Rule actions | reject (block operation with error message) |
+| AI permissions | create/read/update/delete per entity, field-level update restriction |
+| Schema lock | Once published, schema cannot be modified |
 
----
-
-### 10. Dashboard (Minimal)
-
-| Feature | Description | Done when |
-|---|---|---|
-| **View data** | Table view of entity records | User can see all their expenses |
-| **AI activity log** | Every MCP/REST call logged: tool, input, result, timestamp | User can see what AI did |
-| **Rule violation log** | Every blocked operation logged | User can see what AI tried and was rejected |
-
-NOT in 1.0: edit data via dashboard, charts, analytics, export.
+Expressions in 1.0: `<`, `<=`, `>`, `>=`, `==`, `!=`, `AND`, `OR`, `NOT`, `today()`, `now()`, `is null`, `is not null`
 
 ---
 
-### 11. Schema Editor (Minimal)
+### 5. MCP Server
 
-| Feature | Description | Done when |
-|---|---|---|
-| **View schema** | Display current YAML schema in browser | Read-only view |
-| **Edit schema** | Edit YAML in Monaco editor, validate, deploy | User can add a field and redeploy |
-| **Lock / unlock** | Toggle lock from dashboard | Lock button works |
+| Feature | Description |
+|---|---|
+| Per-app MCP endpoint | `mcp://app-id.ezyforge.io` — goes live after approval |
+| Auto-generated tools | create, read, list, update (based on AI permissions) |
+| No tool for denied ops | delete: false → no delete tool exists |
+| List with filters | Filter by field values, sort, limit |
+| Aggregation | sum, count, avg with group_by |
 
-NOT in 1.0: visual drag-and-drop editor, AI-assisted schema creation.
+---
+
+### 6. Tool Execution Runtime
+
+| Feature | Description |
+|---|---|
+| Permission check | First gate — is this operation allowed for AI? |
+| Field validation | Types, constraints, required fields |
+| Rule evaluation | Run before-hooks, reject if condition fails |
+| Database write | Insert/update/read from Postgres |
+| Structured errors | `{ error: "rule_violation", rule: "no_future_dates", message: "..." }` |
+
+---
+
+### 7. Data Storage
+
+| Feature | Description |
+|---|---|
+| Postgres per app | Isolated database (Neon serverless) |
+| Auto-create tables | Tables created from schema on app provisioning |
+| Encrypted at rest | Provider-managed |
+
+---
+
+### 8. Owner View (minimal web)
+
+| Feature | Description |
+|---|---|
+| Data viewer | Simple table showing records |
+| AI activity log | Every MCP call: tool, input, result, timestamp |
+| Auth | Email OTP (same as approval flow) |
+
+No schema editor. No token management UI. No dashboard charts. Just: see your data + see what AI did.
 
 ---
 
@@ -158,94 +140,94 @@ NOT in 1.0: visual drag-and-drop editor, AI-assisted schema creation.
 
 | Feature | Why not | When |
 |---|---|---|
-| Multi-user / team | Complexity. Single owner per app is enough to validate. | 1.1 |
-| Custom roles | Owner + AI is enough for 1.0 | 1.1 |
-| Schema proposals (AI-initiated) | Requires approval workflow. Manual edit is fine for 1.0. | 1.1 |
+| Web signup / onboarding UI | Agent handles signup | 1.1 |
+| Schema editor | Templates only in 1.0, no custom schemas yet | 1.1 |
+| Token management UI | One token auto-generated on publish | 1.1 |
+| REST API | MCP is enough for 1.0 | 1.1 |
+| Multiple templates | Expenses only | 1.1 |
+| Custom roles | Owner + AI only | 1.1 |
+| Schema proposals (AI-initiated) | Manual schema changes not in 1.0 | 1.1 |
+| `forge` CLI | API-first, no CLI needed | 1.1 |
+| Billing | Free tier only | 1.1 |
+| Multi-user / teams | Single owner | 1.2 |
+| Relationships between entities | Not needed for expenses | 1.2 |
 | Workflows / state machines | Not needed for expenses | 1.2 |
-| Entity relationships | Not needed for expenses (expense + budget are independent) | 1.1 |
-| Template marketplace | One template (expenses) is enough | 1.2 |
-| Import (Prisma, CSV, Postgres) | Not needed for new users | 1.2 |
-| Export (data download) | Nice to have, not critical for validation | 1.1 |
-| Custom domains | `your-app.ezyforge.io` is fine | 2.0 |
-| Billing / payments | Free tier only for 1.0 | 1.1 |
-| `forge` CLI | Web UI + MCP is enough | 1.1 |
-| Notifications (email/push) | Not needed for solo user | 1.1 |
-| Zero-knowledge encryption | Enterprise feature | 2.0+ |
 
 ---
 
 ## The Dogfood Test
 
-MVP 1.0 passes when Jazz can do ALL of this:
+MVP 1.0 passes when Jazz does this end-to-end:
 
 ```
-1. ✅ Sign up at ezyforge.io
-2. ✅ Create "My Expenses" from expenses template
-3. ✅ Copy MCP URL + AI token
-4. ✅ Add to OpenClaw config
-5. ✅ "Log lunch at McDonald's RM 15" → expense created
-6. ✅ "How much did I spend on food this month?" → correct sum returned
-7. ✅ "Delete that expense" → refused (no delete tool)
-8. ✅ "Change the amount to 0" → rejected (amount not in allowed_fields)
-9. ✅ "Log dinner for next Friday" → rejected (future date rule)
-10. ✅ Open dashboard → see all expenses + AI activity log
-11. ✅ Add "payment_method" field via schema editor → redeploy
-12. ✅ "Log coffee RM 8, paid by e-wallet" → works with new field
-13. ✅ Lock schema → AI cannot change anything about the structure
+1. ✅ Jazz tells OpenClaw: "Create me an expenses app on EzyForge"
+2. ✅ OpenClaw calls EzyForge API → account created → app initiated from expenses template
+3. ✅ Jazz receives email: "Review your new app — Personal Expenses"
+4. ✅ Jazz opens link → sees schema (expense entity, rules, AI permissions)
+5. ✅ Jazz clicks [Approve & Publish]
+6. ✅ OpenClaw receives MCP endpoint + token → connects
+7. ✅ "Log lunch at McDonald's RM 15" → expense created
+8. ✅ "How much did I spend on food?" → correct sum returned
+9. ✅ "Delete that expense" → refused (no tool)
+10. ✅ "Change the amount to 0" → rejected (not in allowed_fields)
+11. ✅ "Log dinner for next Friday" → rejected (future date rule)
+12. ✅ Jazz opens ezyforge.io → sees expenses + AI activity log
 ```
+
+12 steps. All must pass.
 
 ---
 
-## Tech Stack (1.0)
+## Tech Stack
 
 | Layer | Tech |
 |---|---|
-| **Frontend** | Next.js 15 + Tailwind + shadcn |
-| **Auth** | Supabase Auth (email OTP) |
-| **Platform API** | Hono (on Node.js) |
-| **Engine** | TypeScript (parser, rules, permissions, tools) |
-| **MCP Server** | @modelcontextprotocol/sdk |
-| **Database (platform)** | Supabase Postgres (users, apps, schemas, tokens) |
-| **Database (user apps)** | Neon (serverless Postgres, one DB per app) |
-| **Hosting** | Vercel (frontend) + Railway or Fly.io (engine + MCP) |
-| **Monitoring** | Basic logging to start |
+| Platform API | Hono (Node.js) |
+| Auth | Supabase Auth (email OTP) |
+| MCP Server | @modelcontextprotocol/sdk |
+| Engine | TypeScript (parser, rules, permissions, tools) |
+| Platform DB | Supabase Postgres (accounts, apps, schemas) |
+| App DB | Neon serverless Postgres (user data, 1 per app) |
+| Owner pages | Next.js (approval page + data viewer — 2 pages only) |
+| Hosting | Vercel (pages) + Railway (API + MCP) |
+| Email | Resend (approval notifications) |
 
 ---
 
 ## Build Order
 
 ```
-Week 1: Engine core
+Week 1: Engine
 ├── YAML parser + validator
 ├── Rule engine (conditions + hooks)
 ├── Permission layer
 ├── Tool generator (MCP format)
 ├── Tool execution runtime
-└── Postgres adapter (auto-create tables)
+└── Neon Postgres adapter
 
-Week 2: Cloud platform
-├── Auth (Supabase email OTP)
-├── App creation from template
-├── Token management (create, revoke)
+Week 2: Platform
+├── Account creation API (email OTP via Supabase)
+├── App provisioning API (init from template + draft mode)
+├── Approval flow (email notification + review page)
+├── Publish flow (lock schema, activate MCP, issue token)
 ├── MCP server hosting (per app)
-├── REST API endpoints
 └── Expenses template
 
-Week 3: Dashboard + polish
-├── App detail page (MCP URL, tokens)
-├── Data viewer (table view)
-├── AI activity log
-├── Schema viewer + editor (Monaco)
-├── Lock / unlock
+Week 3: Owner view + integration
+├── Approval review page (schema summary)
+├── Data viewer page (table view)
+├── AI activity log page
+├── Connect OpenClaw as test agent
+└── End-to-end testing
 
 Week 4: Dogfood + fix
-├── Jazz connects OpenClaw
-├── Run all 13 dogfood tests
+├── Jazz runs all 12 dogfood steps
 ├── Fix bugs
 ├── Polish error messages
+├── Harden MCP server
 └── Deploy to production
 ```
 
 ---
 
-*MVP 1.0 — ship in 4 weeks, validate with 1 user (Jazz), then open to early adopters.*
+*MVP 1.0 — agent sets it up, owner approves, agent operates. 4 weeks. 12-step validation.*
